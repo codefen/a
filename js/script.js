@@ -1,4 +1,4 @@
-// Backend configured at 181.88.246.92:1337 - No API key required
+
 class ChatGPTUI {
 	constructor() {
 
