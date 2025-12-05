@@ -1,6 +1,6 @@
 [package]
 name = "arch-ai"
-version = "0.1.2"
+version = "0.1.3"
 description = "Arch AI assistant"
 authors = ["arch"]
 repository = "https://github.com/codefen/a"
