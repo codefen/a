@@ -2,6 +2,7 @@ use tauri::{
     Emitter, LogicalSize, Manager, PhysicalPosition, Position, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_window_state::StateFlags;
+use tauri_plugin_devtools::init as devtools_init;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -52,6 +53,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_cors_fetch::init())
+        .plugin(devtools_init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(StateFlags::all())
