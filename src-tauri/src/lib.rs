@@ -1,8 +1,8 @@
 use tauri::{
     Emitter, LogicalSize, Manager, PhysicalPosition, Position, WebviewUrl, WebviewWindowBuilder,
 };
-use tauri_plugin_window_state::StateFlags;
 use tauri_plugin_devtools::init as devtools_init;
+use tauri_plugin_window_state::StateFlags;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
