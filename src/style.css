@@ -1360,6 +1360,212 @@ body {
 	}
 }
 
+/* ===== AUTO-UPDATE MODALS ===== */
+
+.update-modal-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 10000;
+	background: rgba(0, 0, 0, 0.75);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	animation: fadeIn 0.3s ease;
+}
+
+.update-modal {
+	background: var(--glass-bg);
+	border: 1px solid var(--glass-border);
+	border-radius: var(--glass-radius);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	box-shadow: var(--glass-shadow);
+	min-width: 400px;
+	max-width: 500px;
+	animation: slideUp 0.3s ease;
+}
+
+.update-modal-header {
+	padding: var(--space-lg) var(--space-xl);
+	border-bottom: 1px solid var(--glass-border);
+}
+
+.update-modal-header h3 {
+	color: var(--theme-text-primary);
+	margin: 0;
+	font-size: 20px;
+	font-weight: 600;
+}
+
+.update-modal-body {
+	padding: var(--space-xl);
+	color: var(--theme-text-primary);
+}
+
+.update-modal-body p {
+	margin: var(--space-md) 0;
+	line-height: 1.5;
+}
+
+.update-version {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.update-modal-actions {
+	padding: var(--space-lg) var(--space-xl);
+	border-top: 1px solid var(--glass-border);
+	display: flex;
+	gap: var(--space-md);
+	justify-content: flex-end;
+}
+
+.btn {
+	padding: var(--space-md) var(--space-xl);
+	border: none;
+	border-radius: var(--radius-lg);
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: var(--transition);
+}
+
+.update-cancel-btn {
+	background: rgba(255, 255, 255, 0.05);
+	color: var(--theme-text-secondary);
+}
+
+.update-cancel-btn:hover {
+	background: rgba(255, 255, 255, 0.12);
+	color: var(--theme-text-primary);
+}
+
+.update-download-btn {
+	background: var(--accent);
+	color: white;
+}
+
+.update-download-btn:hover {
+	background: var(--accent-hover);
+}
+
+/* Progress Bar Styles */
+.progress-bar-container {
+	width: 100%;
+	height: 8px;
+	background: rgba(0, 0, 0, 0.3);
+	border-radius: 4px;
+	overflow: hidden;
+	margin: var(--space-lg) 0;
+}
+
+.progress-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+	border-radius: 4px;
+	transition: width 0.3s ease;
+	width: 0%;
+}
+
+.download-status {
+	font-weight: 600;
+	color: var(--accent);
+}
+
+.download-info {
+	font-size: 14px;
+	color: var(--theme-text-secondary);
+	text-align: center;
+}
+
+.download-percentage {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+/* Animations */
+@keyframes slideUp {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+	.update-modal {
+		min-width: 90vw;
+		max-width: 90vw;
+		margin: var(--space-md);
+	}
+
+	.update-modal-actions {
+		flex-direction: column;
+		gap: var(--space-sm);
+	}
+
+	.update-cancel-btn,
+	.update-download-btn {
+		width: 100%;
+	}
+}
+
+/* ===== TOAST NOTIFICATIONS ===== */
+.toast {
+	position: fixed;
+	bottom: 24px;
+	right: 24px;
+	padding: var(--space-lg) var(--space-xl);
+	background: var(--glass-bg);
+	border: 1px solid var(--glass-border);
+	border-radius: var(--radius-lg);
+	color: var(--theme-text-primary);
+	font-size: 14px;
+	z-index: 10001;
+	opacity: 0;
+	transform: translateY(20px);
+	transition: all 0.3s ease;
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	box-shadow: var(--glass-shadow);
+	max-width: 400px;
+}
+
+.toast.show {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.toast.toast-error {
+	border-color: var(--error);
+	background: rgba(248, 81, 73, 0.15);
+}
+
+.toast.toast-success {
+	border-color: var(--success);
+	background: rgba(35, 134, 54, 0.15);
+}
+
+.toast.toast-info {
+	border-color: var(--accent);
+	background: rgba(79, 140, 255, 0.15);
+}
+
 /* --- Hidden API Key Elements --- */
 #apiKeyInput,
 #submitKeyBtn,

@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: ["prod"]
+
+concurrency:
+  group: ${{ github.ref == 'refs/heads/prod' && format('ci-prod-{0}', github.sha) || format('ci-{0}', github.ref) }}
+
+jobs:
+  test:
+    uses: ./.github/workflows/TestCI.yml
+    secrets: inherit
+
+  stratRelease:
+    if: "github.event.repository.fork == false"
+    needs: [test]
+    name: 🚀 Release Codefend App
+    uses: ./.github/workflows/Release.yml
+    secrets: inherit

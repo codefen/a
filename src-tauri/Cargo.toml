@@ -1,9 +1,12 @@
 [package]
-name = "a"
+name = "arch-ai"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Arch AI assistant"
+authors = ["arch"]
+repository = "https://github.com/codefen/arch-ai"
+default-run = "arch-ai"
 edition = "2021"
+rust-version = "1.80.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,4 +25,33 @@ tauri = { version = "2.9.3", features = [] }
 tauri-plugin-opener = "2.5.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
+log = "0.4.28"
+tauri-plugin-process = "2.3.1"
+tauri-plugin-notification = "2.3.3"
+tauri-plugin-upload = "2.3.2"
+tauri-plugin-shell = "2.3.3"
+tauri-plugin-dialog = "2.4.2"
+tauri-plugin-log = "2.7.1"
+tauri-plugin-os = "2.3.1"
+tauri-plugin-fs = "2.4.4"
+tauri-plugin-http = "2.5.4"
+tauri-plugin-cors-fetch = "4.1.0"
+tauri-plugin-window-state = "2.4.1"
+tauri-plugin-store = "2.4.1"
 
+# winsafe = { git = "https://github.com/rodrigocfd/winsafe", features = ["kernel"] }
+[target."cfg(target_os = \"macos\")".dependencies]
+cocoa = "0.25"
+objc = "0.2.7"
+rand = "0.8"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2.9.0"
+
+[features]
+# by default Tauri runs in production mode
+# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
+default = [ "custom-protocol" ]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]

@@ -1,36 +1,89 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "a",
-  "version": "0.1.0",
-  "identifier": "a",
+  "productName": "Arch AI",
+  "version": "../package.json",
+  "identifier": "arch.ai",
+	"app": {
+		"withGlobalTauri": true,
+		"windows": [
+			{
+				"fullscreen": false,
+				"height": 600,
+				"width": 800,
+				"resizable": true,
+				"title": "Arch AI",
+				"visible": true,
+				"center": true,
+				"label": "main",
+				"dragDropEnabled": false,
+				"devtools": false
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	},
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "bun dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
-  },
-  "app": {
-    "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "a",
-        "width": 800,
-        "height": 600
-      }
-    ],
-    "security": {
-      "csp": null
-    }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "appimage", "nsis", "app", "dmg"],
+    "publisher": "Arch AI",
+    "copyright": "Copyright 2025 Arch AI",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
-  }
+    ],
+    "resources": [],
+		"externalBin": [],
+		"shortDescription": "Arch AI - AI assistant",
+		"longDescription": "Arch AI assistant chat with AI",
+    "macOS": {
+			"minimumSystemVersion": "11",
+			"entitlements": null,
+			"exceptionDomain": "",
+			"frameworks": [],
+			"providerShortName": null,
+			"signingIdentity": null
+	  },
+		"windows": {
+			"webviewInstallMode": { 
+				"type": "offlineInstaller",
+				"silent": true 
+			},
+			"certificateThumbprint": null,
+			"digestAlgorithm": "sha256",
+			"timestampUrl": ""
+		},
+		"linux": {
+			"deb": {
+				"depends": []
+			},
+			"appimage": {
+				"bundleMediaFramework": true
+			}
+		}
+	},
+	"plugins": {
+		"fs": {
+			"requireLiteralLeadingDot": false
+		},
+		"updater": {
+			"active": true,
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU1ODYxRUI4NTI0MUNEN0EKUldSNnpVRlN1QjZHVmJLL1l2QXUxdnJ5amUxUTJwd0VjR1FXVmU2YU8wZnFZcnVBOURmMGVjU2QK",
+			"endpoints": [
+				"https://raw.githubusercontent.com/codefen/a/update-latest-json/latest.json"
+			],
+			"windows": {
+				"installMode": "passive"
+			}
+		}
+	}
 }

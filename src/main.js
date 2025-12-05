@@ -23,6 +23,14 @@ class ChatGPTUI {
 
     this.backendUrl = 'https://anarch.ai/api-streaming-proxy.php?path=';
 
+    // Update system properties
+    this.updateState = null;
+    this.updateModal = null;
+    this.downloadModal = null;
+    this.downloadedBytes = 0;
+    this.totalBytes = 0;
+    this.downloadAborted = false;
+
     this.initialize();
   }
 
@@ -34,6 +42,7 @@ class ChatGPTUI {
     this.loadSessions();
     this.setupMobileMenu();
     this.setupSidebarResizing();
+    this.checkForUpdatesOnStartup();
   }
 
   setupSidebarResizing() {
@@ -1501,6 +1510,257 @@ class ChatGPTUI {
       toast.classList.remove('show');
       setTimeout(() => document.body.removeChild(toast), 300);
     }, 3000);
+  }
+
+  // ===== AUTO-UPDATE SYSTEM =====
+
+  async checkForUpdatesOnStartup() {
+    // Check if user already cancelled this session
+    if (sessionStorage.getItem('chatgpt_ui_update_check_skipped') === 'true') {
+      console.log('Update check skipped this session');
+      return;
+    }
+
+    // Only check in Tauri environment
+    if (!window.__TAURI__) {
+      console.log('Not running in Tauri, skipping update check');
+      return;
+    }
+
+    try {
+      const { checkForUpdates } = await import('./auto-update.js');
+      const update = await checkForUpdates();
+
+      if (update) {
+        console.log('Update available:', update);
+        this.updateState = { update };
+        this.showUpdateAvailableModal(update);
+      } 
+    } catch (error) {
+      console.error('Failed to check for updates:', error);
+      // Silent fail - don't interrupt user experience
+    }
+  }
+
+  showUpdateAvailableModal(update) {
+    const overlay = document.createElement('div');
+    overlay.className = 'update-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'update-modal';
+
+    const version = update.version || 'Unknown';
+    const currentVersion = update.currentVersion || 'Unknown';
+
+    modal.innerHTML = `
+      <div class="update-modal-header">
+        <h3>Update Available</h3>
+      </div>
+      <div class="update-modal-body">
+        <p>A new version of Arch AI is available!</p>
+        <p class="update-version">New Version: ${this.escapeHtml(version)}</p>
+        <p style="color: var(--theme-text-secondary); font-size: 13px;">Current Version: ${this.escapeHtml(currentVersion)}</p>
+        <p class="update-notes">Would you like to download and install it now?</p>
+      </div>
+      <div class="update-modal-actions">
+        <button class="btn update-cancel-btn">Cancel</button>
+        <button class="btn update-download-btn">Download</button>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    this.updateModal = overlay;
+
+    const cancelBtn = modal.querySelector('.update-cancel-btn');
+    const downloadBtn = modal.querySelector('.update-download-btn');
+
+    cancelBtn.addEventListener('click', () => this.handleUpdateCancel());
+    downloadBtn.addEventListener('click', () => this.handleUpdateAccept());
+  }
+
+  handleUpdateCancel() {
+    sessionStorage.setItem('chatgpt_ui_update_check_skipped', 'true');
+    this.closeUpdateModal();
+    console.log('Update cancelled by user');
+  }
+
+  handleUpdateAccept() {
+    this.closeUpdateModal();
+    this.showDownloadProgressModal();
+    this.startDownload();
+  }
+
+  closeUpdateModal() {
+    if (this.updateModal) {
+      this.updateModal.remove();
+      this.updateModal = null;
+    }
+  }
+
+  showDownloadProgressModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'update-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'update-modal download-modal';
+
+    modal.innerHTML = `
+      <div class="update-modal-header">
+        <h3>Downloading Update</h3>
+      </div>
+      <div class="update-modal-body">
+        <p class="download-status">Preparing download...</p>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+        <p class="download-info">
+          <span class="downloaded-size">0 MB</span> /
+          <span class="total-size">0 MB</span>
+          (<span class="download-percentage">0%</span>)
+        </p>
+      </div>
+      <div class="update-modal-actions">
+        <button class="btn update-cancel-btn" id="cancelDownloadBtn">Cancel</button>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    this.downloadModal = overlay;
+    this.downloadedBytes = 0;
+    this.totalBytes = 0;
+    this.downloadAborted = false;
+
+    const cancelBtn = modal.querySelector('#cancelDownloadBtn');
+    cancelBtn.addEventListener('click', () => this.handleDownloadCancel());
+  }
+
+  handleDownloadCancel() {
+    this.downloadAborted = true;
+    this.closeDownloadModal();
+    this.showTemporaryMessage('Update cancelled', 'info');
+    console.log('Download cancelled by user');
+  }
+
+  async startDownload() {
+    try {
+      const { downloadAndInstallUpdate, relaunchApp } = await import('./auto-update.js');
+
+      await downloadAndInstallUpdate(this.updateState, (event) => {
+        if (this.downloadAborted) {
+          throw new Error('Download cancelled by user');
+        }
+        this.handleDownloadEvent(event);
+      });
+
+      if (this.downloadAborted) {
+        return;
+      }
+
+      this.showInstallationStatus();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await relaunchApp();
+
+    } catch (error) {
+      if (!this.downloadAborted) {
+        console.error('Download failed:', error);
+        this.handleUpdateError(error);
+      }
+    }
+  }
+
+  handleDownloadEvent(event) {
+    if (!event || !event.event) return;
+
+    switch (event.event) {
+      case 'Started':
+        this.totalBytes = event.data?.contentLength ?? 0;
+        this.updateDownloadProgress(0, this.totalBytes);
+        this.updateDownloadStatus('Downloading...');
+        break;
+
+      case 'Progress':
+        const chunkLength = event.data?.chunkLength ?? 0;
+        this.downloadedBytes += chunkLength;
+        this.updateDownloadProgress(this.downloadedBytes, this.totalBytes);
+        break;
+
+      case 'Finished':
+        this.updateDownloadProgress(this.totalBytes, this.totalBytes);
+        this.updateDownloadStatus('Download complete!');
+        break;
+    }
+  }
+
+  updateDownloadProgress(downloaded, total) {
+    if (!this.downloadModal) return;
+
+    const percentage = total > 0 ? Math.floor((downloaded / total) * 100) : 0;
+    const downloadedMB = (downloaded / (1024 * 1024)).toFixed(2);
+    const totalMB = (total / (1024 * 1024)).toFixed(2);
+
+    const fillBar = this.downloadModal.querySelector('.progress-bar-fill');
+    const downloadedSize = this.downloadModal.querySelector('.downloaded-size');
+    const totalSize = this.downloadModal.querySelector('.total-size');
+    const percentageSpan = this.downloadModal.querySelector('.download-percentage');
+
+    if (fillBar) fillBar.style.width = `${percentage}%`;
+    if (downloadedSize) downloadedSize.textContent = `${downloadedMB} MB`;
+    if (totalSize) totalSize.textContent = `${totalMB} MB`;
+    if (percentageSpan) percentageSpan.textContent = `${percentage}%`;
+  }
+
+  updateDownloadStatus(status) {
+    if (!this.downloadModal) return;
+
+    const statusElement = this.downloadModal.querySelector('.download-status');
+    if (statusElement) {
+      statusElement.textContent = status;
+    }
+  }
+
+  showInstallationStatus() {
+    if (!this.downloadModal) return;
+
+    // Remove cancel button
+    const actionsDiv = this.downloadModal.querySelector('.update-modal-actions');
+    if (actionsDiv) {
+      actionsDiv.remove();
+    }
+
+    const modalBody = this.downloadModal.querySelector('.update-modal-body');
+    if (modalBody) {
+      modalBody.innerHTML = `
+        <p class="download-status" style="text-align: center; color: var(--accent); font-weight: 600;">
+          Installing update...
+        </p>
+        <p style="text-align: center; color: var(--theme-text-secondary); margin-top: var(--space-lg);">
+          The app will restart automatically.
+        </p>
+      `;
+    }
+  }
+
+  handleUpdateError(error) {
+    this.closeDownloadModal();
+
+    const errorMessage = error.message || 'Unknown error occurred';
+    this.showTemporaryMessage(`Update failed: ${errorMessage}`, 'error');
+  }
+
+  closeDownloadModal() {
+    if (this.downloadModal) {
+      this.downloadModal.remove();
+      this.downloadModal = null;
+    }
+
+    this.updateState = null;
+    this.downloadedBytes = 0;
+    this.totalBytes = 0;
+    this.downloadAborted = false;
   }
 
 

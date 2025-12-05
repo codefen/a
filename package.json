@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "author": "Arch AI",
   "scripts": {
     "dev": "vite",
     "start": "vite",
@@ -10,8 +11,42 @@
     "preview": "vite preview",
     "tauri": "tauri"
   },
+  "dependencies": {
+		"@tauri-apps/api": "2.9.0",
+		"@tauri-apps/plugin-dialog": "2.4.2",
+		"@tauri-apps/plugin-notification": "2.3.3",
+		"@tauri-apps/plugin-process": "2.3.1",
+		"@tauri-apps/plugin-shell": "2.3.3",
+		"@tauri-apps/plugin-updater": "2.9.0",
+		"@tauri-apps/plugin-upload": "2.3.2"
+  },
   "devDependencies": {
     "@tauri-apps/cli": "2.9.3",
-    "vite": "7.2.4"
-  }
+    "vite": "7.2.4",
+    "@swc/core": "1.15.3",
+    "rollup-plugin-obfuscator": "1.1.0",
+    "vite-plugin-compression": "0.5.1"
+  },
+	"resolutions": {
+		"minimist": "1.2.6"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codefen/a.git"
+	},
+	"bugs": {
+		"url": "https://github.com/codefen/a/issues"
+	},
+	"browserslist": {
+		"production": [
+			">0.2%",
+			"not dead",
+			"not op_mini all"
+		],
+		"development": [
+			"last 1 chrome version",
+			"last 1 firefox version",
+			"last 1 safari version"
+		]
+	}
 }

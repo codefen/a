@@ -1,0 +1,63 @@
+name: TestCI
+
+defaults:
+  run: {shell: bash}
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  linting:
+    name: 📐 Run Linting with 20.x
+    runs-on: macos-latest
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup/ Use Node.js 20.x
+        uses: actions/setup-node@v4.0.3
+        with:
+          node-version: 20.x
+
+      - name: 🛠️ Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 🛠️ Install dependencies
+        run: bun install
+
+  build:
+    needs: [linting]
+    name: 🔨 Build with 20.x
+    runs-on: macos-latest
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup/ Use Node.js 20.x
+        uses: actions/setup-node@v4.0.3
+        with:
+          node-version: 20.x
+
+      - name: 🛠️ Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 🛠️ Install dependencies
+        run: bun install
+
+      - name: 🔨 Run build client
+        run: bun run build
+
+      - name: ✅ Run Cargo Tests
+        working-directory: ./src-tauri
+        run: |
+          cargo test --all
+
+      - name: 🛡️ Run prune
+        run: bun install --production

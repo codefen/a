@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  createRelease:
+    if: github.event.repository.fork == false
+    name: 🎇 Create Codefend App Release
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      release_id: ${{ steps.create-release.outputs.release_id }}
+      package_version: ${{ steps.get-version.outputs.VERSION }}
+      release_upload_url: ${{ steps.create-release.outputs.release_upload_url }}
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup/ Node.js use 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 🏷️ Get Release Version
+        id: get-version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: 🚀 Create release
+        id: create-release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = `anarch-ai-v${{ steps.get-version.outputs.VERSION }}`;
+            try {
+              const { data } = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                name: `Anarch AI v${{ steps.get-version.outputs.VERSION }}`,
+                body: "What's new? 🎉📣",
+                draft: true,
+                prerelease: false
+              });
+              core.setOutput('release_id', data.id);
+              core.setOutput('release_upload_url', data.upload_url);
+            } catch (e) {
+              if (e.status === 422) {
+                // Release with this tag already exists – reuse it
+                const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+                core.setOutput('release_id', data.id);
+                core.setOutput('release_upload_url', data.upload_url);
+              } else {
+                throw e;
+              }
+            }
+
+  build_linux:
+    needs: [createRelease]
+    uses: ./.github/workflows/PublishLinuxOS.yml
+    with:
+      release_id: ${{ needs.createRelease.outputs.release_id }}
+      package_version: ${{ needs.createRelease.outputs.package_version }}
+    secrets: inherit
+
+  build_macos:
+    needs: [createRelease]
+    uses: ./.github/workflows/PublishMacOs.yml
+    with:
+      release_id: ${{ needs.createRelease.outputs.release_id }}
+      package_version: ${{ needs.createRelease.outputs.package_version }}
+      release_upload_url: ${{ needs.createRelease.outputs.release_upload_url }}
+    secrets: inherit
+
+
+  build_windows:
+    needs: [createRelease]
+    uses: ./.github/workflows/PublishWindowOS.yml
+    with:
+      release_id: ${{ needs.createRelease.outputs.release_id }}
+      package_version: ${{ needs.createRelease.outputs.package_version }}
+      release_upload_url: ${{ needs.createRelease.outputs.release_upload_url }}
+    secrets: inherit
+
+  release_github:
+    needs: [createRelease, build_linux, build_macos, build_windows]
+    name: 🎆 Release Github
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup/ Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 📜 Create Update Manifest Script
+        run: |
+          package_version="${{ needs.createRelease.outputs.package_version }}"
+          pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          macos_aarch64_name_raw="${{ needs.build_macos.outputs.macos_aarch64_name }}"
+          macos_x86_64_name_raw="${{ needs.build_macos.outputs.macos_x86_64_name }}"
+          linux_x86_64_name_raw="${{ needs.build_linux.outputs.linux_x86_64_name }}"
+          windows_x86_64_name_raw="${{ needs.build_windows.outputs.windows_x86_64_name }}"
+
+          macos_aarch64_name=${macos_aarch64_name_raw// /.}
+          macos_x86_64_name=${macos_x86_64_name_raw// /.}
+          linux_x86_64_name=${linux_x86_64_name_raw// /.}
+          windows_x86_64_name=${windows_x86_64_name_raw// /.}
+
+          cat > latest.json << EOL
+          {
+            "version": "${package_version}",
+            "notes": "Anarch AI ${package_version} release",
+            "pub_date": "${pub_date}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "${{ needs.build_macos.outputs.macos_aarch64_sig }}",
+                "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${macos_aarch64_name}"
+              },
+              "darwin-x86_64": {
+                "signature": "${{ needs.build_macos.outputs.macos_x86_64_sig }}",
+                "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${macos_x86_64_name}"
+              },
+              "linux-x86_64": {
+                "signature": "${{ needs.build_linux.outputs.linux_x86_64_sig }}",
+                "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${linux_x86_64_name}"
+              },
+              "windows-x86_64": {
+                "signature": "${{ needs.build_windows.outputs.windows_x86_64_sig }}",
+                "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${windows_x86_64_name}"
+              }
+            }
+          }
+          EOL
+
+          echo "Update manifest generated successfully:"
+          cat latest.json
+
+      - name: 📤 Commit and Push to a new branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git fetch origin
+          git push origin --delete update-latest-json || true
+          git checkout -b update-latest-json
+          git add latest.json
+          git commit -m "Update latest.json"
+          git push -u origin update-latest-json --force
+
+      - name: 🛒 Publish release
+        id: publish-release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = `anarch-ai-v${{ needs.createRelease.outputs.package_version }}`;
+            const releaseId = ${{ needs.createRelease.outputs.release_id }};
+            try {
+              await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: releaseId,
+                draft: false,
+                prerelease: false
+              });
+            } catch (e) {
+              if (e.status === 422) {
+                const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+                await github.rest.repos.updateRelease({
+                  owner,
+                  repo,
+                  release_id: data.id,
+                  draft: false,
+                  prerelease: false
+                });
+              } else {
+                throw e;
+              }
+            }
