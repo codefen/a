@@ -3,7 +3,7 @@ name = "arch-ai"
 version = "0.1.2"
 description = "Arch AI assistant"
 authors = ["arch"]
-repository = "https://github.com/codefen/arch-ai"
+repository = "https://github.com/codefen/a"
 default-run = "arch-ai"
 edition = "2021"
 rust-version = "1.80.0"
@@ -38,6 +38,7 @@ tauri-plugin-http = "2.5.4"
 tauri-plugin-cors-fetch = "4.1.0"
 tauri-plugin-window-state = "2.4.1"
 tauri-plugin-store = "2.4.1"
+tauri-plugin-devtools = "2.0.1"
 
 # winsafe = { git = "https://github.com/rodrigocfd/winsafe", features = ["kernel"] }
 [target."cfg(target_os = \"macos\")".dependencies]

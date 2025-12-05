@@ -16,7 +16,7 @@
 				"center": true,
 				"label": "main",
 				"dragDropEnabled": false,
-				"devtools": false
+				"devtools": true
 			}
 		],
 		"security": {
