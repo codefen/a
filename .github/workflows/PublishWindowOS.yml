@@ -780,7 +780,7 @@ jobs:
             exit 1
           }
 
-          Write-Host "✅ Usando artefacto $artifactType: $($artifact.Name)"
+          Write-Host "✅ Usando artefacto ${artifactType}: $($artifact.Name)"
 
           # Buscar archivo .sig
           $sigFile = "$($artifact.FullName).sig"
