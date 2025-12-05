@@ -110,7 +110,7 @@ jobs:
       - name: 🔨 Run build client
         run: bun run build
 
-      - name: 🔨 Build using tauri action (publish artifacts on release)
+      - name: 🔨 Build using tauri action (build only, no release upload)
         uses: tauri-apps/tauri-action@v0.5.25
         env:
           RUSTFLAGS: "-C target-feature=+crt-static"
@@ -121,6 +121,7 @@ jobs:
           TAURI_BUNDLE_VERSION: ${{ inputs.package_version }}
         with:
           args: '--verbose'
+          # Note: No releaseId here - we upload manually after code signing
 
       - name: ☕ Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
@@ -671,6 +672,20 @@ jobs:
             Write-Host "✅ .sig generado: $expectedSig"
           }
 
+      - name: 🔍 Debug - List files before upload
+        shell: pwsh
+        run: |
+          Write-Host "=== Files in bundle directories ==="
+          Write-Host "`n📁 MSI files:"
+          Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  - $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
+          }
+          Write-Host "`n📁 NSIS files:"
+          Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  - $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
+          }
+          Write-Host "===================================="
+
       - name: 📤 Upload signed artifacts to release
         if: inputs.release_id != ''
         env:
@@ -678,27 +693,53 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          # Buscar archivos firmados en sus ubicaciones finales (excluyendo .sig)
+          # Buscar archivos firmados en sus ubicaciones finales
           $tag = "anarch-ai-v${{ inputs.package_version }}"
           $repo = "$env:GITHUB_REPOSITORY"
           Write-Host "🏷️ Publicando en release/tag: $tag en repo: $repo"
+
           $artifacts = @()
-          $artifacts += Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          $artifacts += Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          
+          $msiFiles = Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
+          $exeFiles = Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
+
+          if ($msiFiles) { $artifacts += $msiFiles }
+          if ($exeFiles) { $artifacts += $exeFiles }
+
+          if ($artifacts.Count -eq 0) {
+            Write-Error "❌ No se encontraron archivos .msi o .exe para subir"
+            exit 1
+          }
+
+          Write-Host "📦 Archivos a subir: $($artifacts.Count)"
+
           foreach ($artifact in $artifacts) {
-            if (Test-Path $artifact.FullName) {
-              Write-Host "📤 Subiendo a release: $($artifact.Name)"
-              gh release upload $tag "$(($artifact.FullName))" --repo $repo --clobber
-              $sigPath = "$($artifact.FullName).sig"
-              if (Test-Path $sigPath) {
-                Write-Host "📤 Subiendo .sig a release: $(Split-Path $sigPath -Leaf)"
+            Write-Host "`n📤 Subiendo: $($artifact.Name) ($([math]::Round($artifact.Length/1MB, 2)) MB)"
+
+            try {
+              gh release upload $tag "$($artifact.FullName)" --repo $repo --clobber
+              Write-Host "✅ Archivo subido exitosamente"
+            } catch {
+              Write-Error "❌ Error subiendo $($artifact.Name): $($_.Exception.Message)"
+              exit 1
+            }
+
+            # Subir archivo .sig si existe
+            $sigPath = "$($artifact.FullName).sig"
+            if (Test-Path $sigPath) {
+              Write-Host "📤 Subiendo .sig: $(Split-Path $sigPath -Leaf)"
+              try {
                 gh release upload $tag "$sigPath" --repo $repo --clobber
-              } else {
-                Write-Warning "⚠️ No se encontró .sig para $($artifact.Name) en $sigPath"
+                Write-Host "✅ Firma subida exitosamente"
+              } catch {
+                Write-Error "❌ Error subiendo firma: $($_.Exception.Message)"
+                exit 1
               }
+            } else {
+              Write-Warning "⚠️ No se encontró .sig para $($artifact.Name)"
             }
           }
+
+          Write-Host "`n✅ Todos los archivos de Windows subidos exitosamente"
 
       - name: 📤 Upload signed artifacts to workflow
         uses: actions/upload-artifact@v4
@@ -717,30 +758,54 @@ jobs:
         id: extract-signatures
         shell: pwsh
         run: |
+          Write-Host "🔍 Buscando artefactos para extracción de firma..."
+
           # Seleccionar artefacto principal (MSI preferido; si no, EXE)
           $msiFile = Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
           $exeFile = Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+
           $artifact = $msiFile
-          if (-not $artifact) { $artifact = $exeFile }
+          $artifactType = "MSI"
+          if (-not $artifact) {
+            $artifact = $exeFile
+            $artifactType = "EXE"
+          }
 
-          if ($artifact) {
-            $sigFile = "$($artifact.FullName).sig"
-            if (-not (Test-Path $sigFile)) {
-              Write-Error "❌ No se encontró archivo .sig para $($artifact.Name) en $sigFile. Asegúrate de ejecutar el paso de generación de .sig."
-              exit 1
-            }
-
-            $signature = (Get-Content -Raw -Path $sigFile).Trim()
-
-            echo "windows_x86_64_sig=$signature" >> $env:GITHUB_OUTPUT
-            echo "windows_x86_64_name=$($artifact.Name)" >> $env:GITHUB_OUTPUT
-
-            Write-Host "📦 Package name: $($artifact.Name)"
-            Write-Host "🖊️ Signature (trunc): $($signature.Substring(0, [Math]::Min(16, $signature.Length)))..."
-          } else {
+          if (-not $artifact) {
             Write-Error "❌ No se encontró artefacto MSI o EXE para extraer firma"
+            Write-Host "Buscando archivos en directorios:"
+            Get-ChildItem -Path ".\src-tauri\target\release\bundle" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "  $($_.FullName)"
+            }
             exit 1
           }
+
+          Write-Host "✅ Usando artefacto $artifactType: $($artifact.Name)"
+
+          # Buscar archivo .sig
+          $sigFile = "$($artifact.FullName).sig"
+          if (-not (Test-Path $sigFile)) {
+            Write-Error "❌ No se encontró archivo .sig para $($artifact.Name)"
+            Write-Error "   Buscado en: $sigFile"
+            exit 1
+          }
+
+          # Leer firma
+          $signature = (Get-Content -Raw -Path $sigFile).Trim()
+
+          if ([string]::IsNullOrWhiteSpace($signature)) {
+            Write-Error "❌ El archivo .sig está vacío"
+            exit 1
+          }
+
+          # Exportar outputs
+          echo "windows_x86_64_sig=$signature" >> $env:GITHUB_OUTPUT
+          echo "windows_x86_64_name=$($artifact.Name)" >> $env:GITHUB_OUTPUT
+
+          Write-Host "✅ Extracción completada:"
+          Write-Host "   📦 Package: $($artifact.Name)"
+          Write-Host "   📝 Signature length: $($signature.Length) chars"
+          Write-Host "   🔍 Signature preview: $($signature.Substring(0, [Math]::Min(50, $signature.Length)))..."
 
       # ============= LIMPIAR ARCHIVOS TEMPORALES =============
       
