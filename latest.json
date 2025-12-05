@@ -1,0 +1,23 @@
+{
+  "version": "0.1.3",
+  "notes": "Anarch AI 0.1.3 release",
+  "pub_date": "2025-12-05T23:23:43Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.3/Arch.AI.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.3/Arch.AI.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.3/Arch.AI_0.1.3_amd64.AppImage"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNnpVRlN1QjZHVllNaTJEYVRDVUNRTG12NXN0TDBrVVRuRnl4L1MweTdqd0gyS0NId3BMMk1YdjB6WnU5YU0xOE84TXZZL2ZKNFUxdmlzZ2FCUkZpSkFML3dRcTE1andnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY0OTc2ODcxCWZpbGU6QXJjaCBBSV8wLjEuM194NjQtc2V0dXAuZXhlCkE5WHZ4QUtYZzMybzdDSVhYVTVyTFJ6dlY5aVNrcGZ3Rm1KbWtuREVEL1dHUFNKNjVnZUgzRVNaeWc3clo1OFpyNWRHbFlnWmlnWkRoaHpzWGNmZkR3PT0K",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.3/Arch.AI_0.1.3_x64-setup.exe"
+    }
+  }
+}
