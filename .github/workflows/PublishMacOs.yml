@@ -164,7 +164,7 @@ jobs:
           if [[ "$target" == *"x86_64"* ]]; then
             macos_x86_64_sig=$(read_signature "$sig_path")
             echo "macos_x86_64_sig=$macos_x86_64_sig" >> $GITHUB_OUTPUT
-            echo "macos__x86_64_name=$artifact_name" >> $GITHUB_OUTPUT
+            echo "macos_x86_64_name=$artifact_name" >> $GITHUB_OUTPUT
           else
             macos_aarch64_sig=$(read_signature "$sig_path")
             echo "macos_aarch64_sig=$macos_aarch64_sig" >> $GITHUB_OUTPUT
