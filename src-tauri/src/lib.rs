@@ -4,7 +4,6 @@ use tauri::{
 use tauri_plugin_devtools::init as devtools_init;
 use tauri_plugin_window_state::StateFlags;
 
-
 #[tauri::command]
 fn create_main_window(app: tauri::AppHandle) -> Result<(), tauri::Error> {
     if app.get_webview_window("main").is_none() {
