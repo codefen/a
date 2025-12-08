@@ -24,4 +24,5 @@ export const MARKDOWN_BREACK_REGEX = /\n/g;
 export const MARKDOWN_TITLE_SPACE_LINE_1 = /(<\/h[1-6]>|<hr>)(<br>\s*)+/gi;
 export const MARKDOWN_TITLE_SPACE_LINE_2 = /(<br>\s*)+(<h[1-6]|<hr>)/gi;
 export const SESSIONS_TITLE = /\/X\/(.*?)\/X\//;
+export const ESCAPE_SPECIAL_CHARACTERS_REGEX = /[&<>"']/g;
 

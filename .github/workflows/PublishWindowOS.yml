@@ -485,7 +485,6 @@ jobs:
             Write-Host "✅ EXE firmado exitosamente"
 
           } finally {
-            # CRÍTICO: Limpiar archivo TOTP
             if (Test-Path $totpFile) {
               Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
               Write-Host "🗑️ Archivo TOTP temporal limpiado"
@@ -598,12 +597,10 @@ jobs:
                 Write-Host "📥 Reemplazando EXE original con versión firmada: $($file.Name)"
               }
               
-              # Crear directorio de destino si no existe
               if (-not (Test-Path $destination)) {
                 New-Item -ItemType Directory -Path $destination -Force
               }
               
-              # Mover archivo firmado reemplazando el original
               Move-Item -Path $file.FullName -Destination $destination -Force
               Write-Host "✅ Archivo firmado movido a: $destination$($file.Name)"
             }
@@ -693,7 +690,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          # Buscar archivos firmados en sus ubicaciones finales
           $tag = "anarch-ai-v${{ inputs.package_version }}"
           $repo = "$env:GITHUB_REPOSITORY"
           Write-Host "🏷️ Publicando en release/tag: $tag en repo: $repo"

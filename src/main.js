@@ -1,4 +1,29 @@
-const invoke = window.__TAURI__ ? window.__TAURI__.core.invoke : async () => console.warn('Tauri invoke not available in browser');
+import {checkForUpdates,downloadAndInstallUpdate, relaunchApp} from './auto-update.js';
+import {
+  CODE_BLOCK_REGEX,
+  FIRST_LATEX_REGEX,
+  SECOND_LATEX_REGEX,
+  NAME_REPLACE_URL,
+  PROCCESS_MARKDOWN_REGEX,
+  MARKDOWN_H6_REGEX,
+  MARKDOWN_H5_REGEX,
+  MARKDOWN_H4_REGEX,
+  MARKDOWN_H3_REGEX,
+  MARKDOWN_H2_REGEX,
+  MARKDOWN_H1_REGEX,
+  MARKDOWN_BOLD_REGEX,
+  MARKDOWN_BREACK_REGEX,
+  MARKDOWN_CODE_REGEX,
+  MARKDOWN_HR_REGEX,
+  MARKDOWN_ITALIC_REGEX,
+  MARKDOWN_TITLE_SPACE_LINE_1,
+  MARKDOWN_TITLE_SPACE_LINE_2,
+  SESSIONS_TITLE,
+  ESCAPE_SPECIAL_CHARACTERS_REGEX,
+} from "./consts.js";
+import { $ } from './util.js';
+
+const _invoke = window.__TAURI__ ? window.__TAURI__.core.invoke : async () => console.warn('Tauri invoke not available in browser');
 
 
 class ChatGPTUI {
@@ -77,48 +102,48 @@ class ChatGPTUI {
 
   initializeElements() {
 
-    this.appContainer = document.getElementById('appContainer');
+    this.appContainer = $('appContainer');
 
 
-    this.chatMessages = document.getElementById('chatMessages');
-    this.messageInput = document.getElementById('messageInput');
-    this.sendButton = document.getElementById('sendButton');
-    this.clearButton = document.getElementById('clearButton');
-    this.typingIndicator = document.getElementById('typingIndicator');
+    this.chatMessages = $('chatMessages');
+    this.messageInput = $('messageInput');
+    this.sendButton = $('sendButton');
+    this.clearButton = $('clearButton');
+    this.typingIndicator = $('typingIndicator');
 
 
-    this.modelSelect = document.getElementById('modelSelect');
-    this.refreshModelsBtn = document.getElementById('refreshModelsBtn');
-    this.streamingCheckbox = document.getElementById('streamingCheckbox');
-    this.modelInfo = document.getElementById('modelInfo');
-    this.mainControls = document.getElementById('mainControls');
+    this.modelSelect = $('modelSelect');
+    this.refreshModelsBtn = $('refreshModelsBtn');
+    this.streamingCheckbox = $('streamingCheckbox');
+    this.modelInfo = $('modelInfo');
+    this.mainControls = $('mainControls');
 
 
-    this.fileInput = document.getElementById('fileInput');
-    this.fileUploadBtn = document.getElementById('fileUploadBtn');
-    this.imageUploadBtn = document.getElementById('imageUploadBtn');
-    this.uploadedFilesContainer = document.getElementById('uploadedFiles');
+    this.fileInput = $('fileInput');
+    this.fileUploadBtn = $('fileUploadBtn');
+    this.imageUploadBtn = $('imageUploadBtn');
+    this.uploadedFilesContainer = $('uploadedFiles');
 
 
-    this.newChatBtn = document.getElementById('newChatBtn');
-    this.sessionsList = document.getElementById('sessionsList');
-    this.sessionNameInput = document.getElementById('sessionNameInput');
-    this.exportSessionBtn = document.getElementById('exportSessionBtn');
-    this.autoSaveIndicator = document.getElementById('autoSaveIndicator');
+    this.newChatBtn = $('newChatBtn');
+    this.sessionsList = $('sessionsList');
+    this.sessionNameInput = $('sessionNameInput');
+    this.exportSessionBtn = $('exportSessionBtn');
+    this.autoSaveIndicator = $('autoSaveIndicator');
 
 
-    this.importAllBtn = document.getElementById('importAllBtn');
-    this.exportAllBtn = document.getElementById('exportAllBtn');
-    this.deleteAllBtn = document.getElementById('deleteAllBtn');
-    this.importFileInput = document.getElementById('importFileInput');
+    this.importAllBtn = $('importAllBtn');
+    this.exportAllBtn = $('exportAllBtn');
+    this.deleteAllBtn = $('deleteAllBtn');
+    this.importFileInput = $('importFileInput');
 
-    this.mobileMenuToggle = document.getElementById('mobileMenuToggle');
-    this.sidebar = document.getElementById('sidebar');
-    this.sidebarOverlay = document.getElementById('sidebarOverlay');
-    this.mainContent = document.getElementById('mainContent');
-    this.sidebarResizer = document.getElementById('sidebarResizer');
+    this.mobileMenuToggle = $('mobileMenuToggle');
+    this.sidebar = $('sidebar');
+    this.sidebarOverlay = $('sidebarOverlay');
+    this.mainContent = $('mainContent');
+    this.sidebarResizer = $('sidebarResizer');
 
-    this.configSection = document.getElementById('configSection');
+    this.configSection = $('configSection');
   }
 
 
@@ -1347,26 +1372,26 @@ class ChatGPTUI {
 
     let formattedContent = content;
 
-    formattedContent = formattedContent.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 8px; margin-top: 12px;">');
+    formattedContent = formattedContent.replace(PROCCESS_MARKDOWN_REGEX, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 8px; margin-top: 12px;">');
 
     formattedContent = formattedContent
-      .replace(/^###### (.*$)/gim, '<h6 class="markdown-heading">$1</h6>')
-      .replace(/^##### (.*$)/gim, '<h5 class="markdown-heading">$1</h5>')
-      .replace(/^#### (.*$)/gim, '<h4 class="markdown-heading">$1</h4>')
-      .replace(/^### (.*$)/gim, '<h3 class="markdown-heading">$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2 class="markdown-heading">$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1 class="markdown-heading">$1</h1>');
-    formattedContent = formattedContent.replace(/^\s*---+\s*$/gm, '<hr>');
+      .replace(MARKDOWN_H6_REGEX, '<h6 class="markdown-heading">$1</h6>')
+      .replace(MARKDOWN_H5_REGEX, '<h5 class="markdown-heading">$1</h5>')
+      .replace(MARKDOWN_H4_REGEX, '<h4 class="markdown-heading">$1</h4>')
+      .replace(MARKDOWN_H3_REGEX, '<h3 class="markdown-heading">$1</h3>')
+      .replace(MARKDOWN_H2_REGEX, '<h2 class="markdown-heading">$1</h2>')
+      .replace(MARKDOWN_H1_REGEX, '<h1 class="markdown-heading">$1</h1>');
+    formattedContent = formattedContent.replace(MARKDOWN_HR_REGEX, '<hr>');
 
     formattedContent = formattedContent
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="markdown-bold">$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`(.*?)`/g, '<code>$1</code>');
+      .replace(MARKDOWN_BOLD_REGEX, '<strong class="markdown-bold">$1</strong>')
+      .replace(MARKDOWN_ITALIC_REGEX, '<em>$1</em>')
+      .replace(MARKDOWN_CODE_REGEX, '<code>$1</code>');
 
 
-    formattedContent = formattedContent.replace(/\n/g, '<br>');
-    formattedContent = formattedContent.replace(/(<\/h[1-6]>|<hr>)(<br>\s*)+/gi, '$1');
-    formattedContent = formattedContent.replace(/(<br>\s*)+(<h[1-6]|<hr>)/gi, '$2');
+    formattedContent = formattedContent.replace(MARKDOWN_BREACK_REGEX, '<br>');
+    formattedContent = formattedContent.replace(MARKDOWN_TITLE_SPACE_LINE_1, '$1');
+    formattedContent = formattedContent.replace(MARKDOWN_TITLE_SPACE_LINE_2, '$2');
 
     return formattedContent;
   }
@@ -1403,7 +1428,7 @@ class ChatGPTUI {
 
 
   extractSessionTitleFromResponse(content) {
-    const titleRegex = /\/X\/(.*?)\/X\//;
+    const titleRegex = SESSIONS_TITLE;
     const match = content.match(titleRegex);
 
     if (match) {
@@ -1476,7 +1501,7 @@ class ChatGPTUI {
       '"': '&quot;',
       "'": '&#39;'
     };
-    return text.replace(/[&<>"']/g, (m) => map[m]);
+    return text.replace(ESCAPE_SPECIAL_CHARACTERS_REGEX, (m) => map[m]);
   }
 
   scrollToBottom() {
@@ -1528,7 +1553,6 @@ class ChatGPTUI {
     }
 
     try {
-      const { checkForUpdates } = await import('./auto-update.js');
       const update = await checkForUpdates();
 
       if (update) {
@@ -1557,7 +1581,7 @@ class ChatGPTUI {
         <h3>Update Available</h3>
       </div>
       <div class="update-modal-body">
-        <p>A new version of Arch AI is available!</p>
+        <p>A new version of Anarch AI is available!</p>
         <p class="update-version">New Version: ${this.escapeHtml(version)}</p>
         <p style="color: var(--theme-text-secondary); font-size: 13px;">Current Version: ${this.escapeHtml(currentVersion)}</p>
         <p class="update-notes">Would you like to download and install it now?</p>
@@ -1647,8 +1671,6 @@ class ChatGPTUI {
 
   async startDownload() {
     try {
-      const { downloadAndInstallUpdate, relaunchApp } = await import('./auto-update.js');
-
       await downloadAndInstallUpdate(this.updateState, (event) => {
         if (this.downloadAborted) {
           throw new Error('Download cancelled by user');
@@ -1786,7 +1808,7 @@ class ChatGPTUI {
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${session.name.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.json`;
+    a.download = `${session.name.replace(NAME_REPLACE_URL, '_')}_${Date.now()}.json`;
     a.click();
 
     URL.revokeObjectURL(url);
@@ -1900,7 +1922,7 @@ class ChatGPTUI {
   }
 
   copyToClipboard(elementId) {
-    const element = document.getElementById(elementId);
+    const element = $(elementId);
     if (!element) return;
 
     navigator.clipboard.writeText(element.innerText).then(() => {
@@ -1911,7 +1933,7 @@ class ChatGPTUI {
   }
 
   toggleFileSummary(summaryId) {
-    const summary = document.getElementById(summaryId);
+    const summary = $(summaryId);
     summary?.classList.toggle('collapsed');
   }
 
@@ -1929,13 +1951,13 @@ class ChatGPTUI {
 
   processLatex(content) {
     return content
-      .replace(/\$\$([\s\S]+?)\$\$/g, '<div class="latex-display">$&</div>')
-      .replace(/(?<!\\)\$([^\n$]+?)\$/g, '<span class="latex-inline">$&</span>');
+      .replace(FIRST_LATEX_REGEX, '<div class="latex-display">$&</div>')
+      .replace(SECOND_LATEX_REGEX, '<span class="latex-inline">$&</span>');
   }
 
   processCodeBlocks(content, codeBlocks, placeholder) {
 
-    return content.replace(/^\s*```(\w*)\n([\s\S]*?)\n\s*```/gm, (match, lang, code) => {
+    return content.replace(CODE_BLOCK_REGEX, (match, lang, code) => {
       const language = lang || 'text';
       const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
 

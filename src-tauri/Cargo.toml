@@ -1,10 +1,10 @@
 [package]
-name = "arch-ai"
+name = "anarch-ai"
 version = "0.1.3"
-description = "Arch AI assistant"
+description = "Anarch AI assistant"
 authors = ["arch"]
 repository = "https://github.com/codefen/a"
-default-run = "arch-ai"
+default-run = "anarch-ai"
 edition = "2021"
 rust-version = "1.80.0"
 
@@ -32,13 +32,13 @@ tauri-plugin-upload = "2.3.2"
 tauri-plugin-shell = "2.3.3"
 tauri-plugin-dialog = "2.4.2"
 tauri-plugin-log = "2.7.1"
-tauri-plugin-os = "2.3.1"
 tauri-plugin-fs = "2.4.4"
-tauri-plugin-http = "2.5.4"
-tauri-plugin-cors-fetch = "4.1.0"
+tauri-plugin-os = "2.3.1"
 tauri-plugin-window-state = "2.4.1"
-tauri-plugin-store = "2.4.1"
+tauri-plugin-http = "2.5.4"
 tauri-plugin-devtools = "2.0.1"
+tauri-plugin-store = "2.4.1"
+tauri-plugin-cors-fetch = "4.1.0"
 
 # winsafe = { git = "https://github.com/rodrigocfd/winsafe", features = ["kernel"] }
 [target."cfg(target_os = \"macos\")".dependencies]
