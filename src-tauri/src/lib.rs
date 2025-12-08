@@ -4,11 +4,6 @@ use tauri::{
 use tauri_plugin_devtools::init as devtools_init;
 use tauri_plugin_window_state::StateFlags;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 #[tauri::command]
 fn create_main_window(app: tauri::AppHandle) -> Result<(), tauri::Error> {
@@ -40,6 +35,16 @@ fn create_main_window(app: tauri::AppHandle) -> Result<(), tauri::Error> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_devtools_for_main(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        win.open_devtools();
+        Ok(())
+    } else {
+        Err("main window not found".into())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -63,7 +68,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init());
 
     builder
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![open_devtools_for_main])
         .setup(|#[allow(unused_variables)] app| {
             #[cfg(desktop)]
             {

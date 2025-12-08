@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Arch AI",
+  "productName": "Anarch AI",
   "version": "../package.json",
   "identifier": "arch.ai",
 	"app": {
@@ -11,7 +11,7 @@
 				"height": 600,
 				"width": 800,
 				"resizable": true,
-				"title": "Arch AI",
+				"title": "Anarch AI",
 				"visible": true,
 				"center": true,
 				"label": "main",
@@ -32,8 +32,8 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "appimage", "nsis", "app", "dmg"],
-    "publisher": "Arch AI",
-    "copyright": "Copyright 2025 Arch AI",
+    "publisher": "Anarch AI",
+    "copyright": "Copyright 2025 Codefend LLC",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -43,8 +43,8 @@
     ],
     "resources": [],
 		"externalBin": [],
-		"shortDescription": "Arch AI - AI assistant",
-		"longDescription": "Arch AI assistant chat with AI",
+		"shortDescription": "Anarch AI - AI assistant",
+		"longDescription": "Anarch AI assistant chat with AI",
     "macOS": {
 			"minimumSystemVersion": "11",
 			"entitlements": null,

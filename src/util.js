@@ -1,4 +1,4 @@
-export const $ = el => document.querySelector(el);
+export const $ = el => document.getElementById(el);
 export const $FROM = (e, s) => e.querySelector(s);
 export const $$ = el => document.querySelectorAll(el);
 export const $FROM_ALL = (e, s) => e.querySelectorAll(s);
