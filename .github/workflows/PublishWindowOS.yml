@@ -105,6 +105,123 @@ jobs:
       - name: 🔨 Run build client
         run: bun run build
 
+      # ============= SETUP CODESIGNTOOL PRIMERO =============
+
+      - name: ☕ Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 📦 Cache CodeSignTool
+        id: cache-codesigntool
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/codesigntool
+          key: codesigntool-windows-v1.3.0
+          restore-keys: |
+            codesigntool-windows-
+
+      - name: 📥 Download and Setup CodeSignTool
+        if: steps.cache-codesigntool.outputs.cache-hit != 'true'
+        id: setup-codesigntool
+        shell: pwsh
+        run: |
+          # Descargar CodeSignTool para Windows
+          Write-Host "📥 Descargando CodeSignTool (no en caché)..."
+          $toolUrl = "https://www.ssl.com/download/codesigntool-for-windows/"
+          $zipPath = "CodeSignTool.zip"
+
+          Invoke-WebRequest -Uri $toolUrl -OutFile $zipPath
+
+          # Verificar integridad del archivo
+          Write-Host "🔍 Verificando integridad del archivo descargado..."
+          $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+          Write-Host "📋 Hash SHA256: $actualHash"
+
+          # Verificar tamaño del archivo (detección básica de anomalías)
+          $fileSize = (Get-Item $zipPath).Length
+          $minSize = 1MB
+          $maxSize = 500MB
+
+          if ($fileSize -lt $minSize -or $fileSize -gt $maxSize) {
+            Write-Error "❌ Tamaño de archivo sospechoso: $fileSize bytes (esperado: $minSize - $maxSize)"
+            exit 1
+          }
+          Write-Host "✅ Tamaño de archivo válido: $([math]::Round($fileSize/1MB, 2)) MB"
+
+          # Extraer
+          Write-Host "📦 Extrayendo CodeSignTool..."
+          Expand-Archive -Path $zipPath -DestinationPath "$env:GITHUB_WORKSPACE\codesigntool" -Force
+
+          # Verificar contenido
+          Write-Host "📂 Contenido de CodeSignTool:"
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Recurse -Name | Head -20
+
+      - name: 🔍 Locate CodeSignTool.bat
+        id: locate-codesigntool
+        shell: pwsh
+        run: |
+          # Verificar si hay JDK incluido
+          $jdkPath = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Filter "*jdk*" -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($jdkPath) {
+            Write-Host "✅ JDK encontrado en: $($jdkPath.FullName)"
+          } else {
+            Write-Host "⚠️ No se encontró JDK incluido"
+          }
+
+          # Buscar el archivo .bat - puede estar en diferentes ubicaciones
+          $possiblePaths = @(
+            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool.bat",
+            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool-v1.3.0\CodeSignTool.bat",
+            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool-v1.2.7\CodeSignTool.bat"
+          )
+
+          $batFile = $null
+          foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+              $batFile = $path
+              break
+            }
+          }
+
+          # Si no se encuentra en las rutas conocidas, buscar recursivamente
+          if (-not $batFile) {
+            $foundBat = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Filter "CodeSignTool*.bat" -Recurse | Select-Object -First 1
+            if ($foundBat) {
+              $batFile = $foundBat.FullName
+            }
+          }
+
+          if (-not $batFile) {
+            Write-Error "❌ No se pudo encontrar CodeSignTool.bat"
+            exit 1
+          }
+
+          Write-Host "✅ CodeSignTool.bat encontrado en: $batFile"
+          # Guardar como output del step
+          echo "CODESIGNTOOL_BAT=$batFile" >> $env:GITHUB_OUTPUT
+
+          # Verificar que el archivo es ejecutable
+          Write-Host "🔍 Verificando CodeSignTool.bat..."
+
+          # Obtener el directorio del bat file para verificar estructura
+          $batDir = Split-Path -Parent $batFile
+          Write-Host "📁 Directorio del bat file: $batDir"
+          echo "CODESIGNTOOL_DIR=$batDir" >> $env:GITHUB_OUTPUT
+
+          # Listar contenido del directorio
+          Write-Host "📋 Archivos en el directorio:"
+          Get-ChildItem -Path $batDir -Name
+
+          # Verificar si existe el JDK en la misma estructura
+          $javaExe = Get-ChildItem -Path $batDir -Filter "java.exe" -Recurse | Select-Object -First 1
+          if ($javaExe) {
+            Write-Host "☕ Java encontrado en: $($javaExe.FullName)"
+          } else {
+            Write-Host "⚠️ Java no encontrado en el directorio del bat"
+          }
+
       # ============= CONSTRUIR Y FIRMAR EL EJECUTABLE DE LA APP ANTES DEL EMPAQUETADO =============
 
       - name: 🔨 Build Rust binary (without packaging)
@@ -287,7 +404,7 @@ jobs:
             exit 1
           }
 
-      # ============= AHORA TAURI EMPAQUETARÁ EL INSTALADOR CON EL EJECUTABLE YA FIRMADO =============
+      # ============= EMPAQUETAR BINARIO FIRMADO =============
 
       - name: 🔨 Build using tauri action (build only, no release upload)
         uses: tauri-apps/tauri-action@v0.5.25
@@ -327,121 +444,7 @@ jobs:
             exit 1
           }
 
-      - name: ☕ Setup Java 17 (Temurin)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: 📦 Cache CodeSignTool
-        id: cache-codesigntool
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/codesigntool
-          key: codesigntool-windows-v1.3.0
-          restore-keys: |
-            codesigntool-windows-
-
-      - name: 📥 Download and Setup CodeSignTool
-        if: steps.cache-codesigntool.outputs.cache-hit != 'true'
-        id: setup-codesigntool
-        shell: pwsh
-        run: |
-          # Descargar CodeSignTool para Windows
-          Write-Host "📥 Descargando CodeSignTool (no en caché)..."
-          $toolUrl = "https://www.ssl.com/download/codesigntool-for-windows/"
-          $zipPath = "CodeSignTool.zip"
-
-          Invoke-WebRequest -Uri $toolUrl -OutFile $zipPath
-
-          # Verificar integridad del archivo
-          Write-Host "🔍 Verificando integridad del archivo descargado..."
-          $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
-          Write-Host "📋 Hash SHA256: $actualHash"
-
-          # Verificar tamaño del archivo (detección básica de anomalías)
-          $fileSize = (Get-Item $zipPath).Length
-          $minSize = 1MB
-          $maxSize = 500MB
-
-          if ($fileSize -lt $minSize -or $fileSize -gt $maxSize) {
-            Write-Error "❌ Tamaño de archivo sospechoso: $fileSize bytes (esperado: $minSize - $maxSize)"
-            exit 1
-          }
-          Write-Host "✅ Tamaño de archivo válido: $([math]::Round($fileSize/1MB, 2)) MB"
-
-          # Extraer
-          Write-Host "📦 Extrayendo CodeSignTool..."
-          Expand-Archive -Path $zipPath -DestinationPath "$env:GITHUB_WORKSPACE\codesigntool" -Force
-
-          # Verificar contenido
-          Write-Host "📂 Contenido de CodeSignTool:"
-          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Recurse -Name | Head -20
-
-      - name: 🔍 Locate CodeSignTool.bat
-        id: locate-codesigntool
-        shell: pwsh
-        run: |
-          # Verificar si hay JDK incluido
-          $jdkPath = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Filter "*jdk*" -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($jdkPath) {
-            Write-Host "✅ JDK encontrado en: $($jdkPath.FullName)"
-          } else {
-            Write-Host "⚠️ No se encontró JDK incluido"
-          }
-
-          # Buscar el archivo .bat - puede estar en diferentes ubicaciones
-          $possiblePaths = @(
-            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool.bat",
-            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool-v1.3.0\CodeSignTool.bat",
-            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool-v1.2.7\CodeSignTool.bat"
-          )
-          
-          $batFile = $null
-          foreach ($path in $possiblePaths) {
-            if (Test-Path $path) {
-              $batFile = $path
-              break
-            }
-          }
-          
-          # Si no se encuentra en las rutas conocidas, buscar recursivamente
-          if (-not $batFile) {
-            $foundBat = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Filter "CodeSignTool*.bat" -Recurse | Select-Object -First 1
-            if ($foundBat) {
-              $batFile = $foundBat.FullName
-            }
-          }
-
-          if (-not $batFile) {
-            Write-Error "❌ No se pudo encontrar CodeSignTool.bat"
-            exit 1
-          }
-
-          Write-Host "✅ CodeSignTool.bat encontrado en: $batFile"
-          # Guardar como output del step
-          echo "CODESIGNTOOL_BAT=$batFile" >> $env:GITHUB_OUTPUT
-            
-          # Verificar que el archivo es ejecutable
-          Write-Host "🔍 Verificando CodeSignTool.bat..."
-            
-          # Obtener el directorio del bat file para verificar estructura
-          $batDir = Split-Path -Parent $batFile
-          Write-Host "📁 Directorio del bat file: $batDir"
-          echo "CODESIGNTOOL_DIR=$batDir" >> $env:GITHUB_OUTPUT
-            
-          # Listar contenido del directorio
-          Write-Host "📋 Archivos en el directorio:"
-          Get-ChildItem -Path $batDir -Name
-            
-          # Verificar si existe el JDK en la misma estructura
-          $javaExe = Get-ChildItem -Path $batDir -Filter "java.exe" -Recurse | Select-Object -First 1
-          if ($javaExe) {
-            Write-Host "☕ Java encontrado en: $($javaExe.FullName)"
-          } else {
-            Write-Host "⚠️ Java no encontrado en el directorio del bat"
-          }
-
+      # ============= FIRMAR EL INSTALADOR (MSI/EXE) =============
 
       - name: 📦 Prepare files for signing
         shell: pwsh
