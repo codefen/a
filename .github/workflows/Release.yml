@@ -92,7 +92,8 @@ jobs:
     secrets: inherit
 
   release_github:
-    needs: [createRelease, build_linux, build_macos, build_windows]
+    # needs: [createRelease, build_linux, build_macos, build_windows]
+    needs: [createRelease, build_windows]
     name: 🎆 Release Github
     permissions:
       contents: write
