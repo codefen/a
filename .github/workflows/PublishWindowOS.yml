@@ -231,11 +231,12 @@ jobs:
         run: |
           Write-Host "🔨 Compilando binario de Rust sin empaquetar..."
           cd src-tauri
-          cargo build --release --target x86_64-pc-windows-msvc
+          # IMPORTANTE: Construir en target/release (sin --target) porque es la ubicación que Tauri usa
+          cargo build --release
           cd ..
 
           # Verificar que el ejecutable se creó
-          $exePath = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+          $exePath = ".\src-tauri\target\release\anarch-ai.exe"
           if (-not (Test-Path $exePath)) {
             Write-Error "❌ No se encontró el ejecutable en: $exePath"
             exit 1
@@ -252,7 +253,7 @@ jobs:
           SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
           CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
         run: |
-          $appExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
           Write-Host "🔍 Escaneando ejecutable de la app: $appExe"
 
           if (-not (Test-Path "$appExe")) {
@@ -289,7 +290,7 @@ jobs:
             Write-Warning "⚠️ Advertencia en escaneo, pero continuando..."
           }
 
-      - name: 🔐 Sign app executable with CodeSignTool
+      - name: 🔐 Sign app executable IN-PLACE with CodeSignTool
         shell: pwsh
         env:
           SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
@@ -297,8 +298,8 @@ jobs:
           CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
           SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
         run: |
-          $appExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
-          Write-Host "🔐 Firmando ejecutable de la app: $appExe"
+          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
+          Write-Host "🔐 Firmando ejecutable de la app IN-PLACE: $appExe"
 
           # Crear directorio temporal para el archivo firmado
           New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signed-app" | Out-Null
@@ -336,7 +337,17 @@ jobs:
               exit 1
             }
 
-            Write-Host "✅ Ejecutable de la app firmado exitosamente"
+            Write-Host "✅ Ejecutable de la app firmado exitosamente en directorio temporal"
+
+            # CRÍTICO: Copiar el ejecutable firmado de vuelta a la ubicación original
+            $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
+            if (Test-Path $signedExe) {
+              Copy-Item -Path $signedExe -Destination $appExe -Force
+              Write-Host "✅ Ejecutable firmado copiado de vuelta a: $appExe"
+            } else {
+              Write-Error "❌ No se encontró el ejecutable firmado en: $signedExe"
+              exit 1
+            }
 
           } finally {
             # CRÍTICO: Limpiar archivo TOTP
@@ -349,15 +360,15 @@ jobs:
       - name: ✅ Verify app executable signature
         shell: pwsh
         run: |
-          $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
+          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
 
-          if (-not (Test-Path $signedExe)) {
-            Write-Error "❌ No se encontró el ejecutable firmado en: $signedExe"
+          if (-not (Test-Path $appExe)) {
+            Write-Error "❌ No se encontró el ejecutable en: $appExe"
             exit 1
           }
 
           Write-Host "🔍 Verificando firma del ejecutable de la app..."
-          $cert = Get-AuthenticodeSignature -FilePath $signedExe
+          $cert = Get-AuthenticodeSignature -FilePath $appExe
 
           Write-Host "   Estado de firma: $($cert.Status)"
 
@@ -376,55 +387,33 @@ jobs:
             exit 1
           }
 
-      - name: 📂 Replace unsigned exe with signed exe
+      # ============= EMPAQUETAR BINARIO FIRMADO (SIN RECOMPILAR) =============
+
+      - name: 📦 Create installers using Tauri CLI (bundle only, no recompile)
         shell: pwsh
-        run: |
-          $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
-          $targetExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
-
-          Write-Host "📂 Reemplazando ejecutable sin firmar con versión firmada..."
-          Write-Host "   Origen: $signedExe"
-          Write-Host "   Destino: $targetExe"
-
-          # Hacer backup del original por si acaso
-          $backupExe = "$targetExe.unsigned"
-          Copy-Item -Path $targetExe -Destination $backupExe -Force
-          Write-Host "💾 Backup creado: $backupExe"
-
-          # Reemplazar con el firmado
-          Copy-Item -Path $signedExe -Destination $targetExe -Force
-          Write-Host "✅ Ejecutable reemplazado con versión firmada"
-
-          # Verificar que el reemplazo fue exitoso
-          $finalCert = Get-AuthenticodeSignature -FilePath $targetExe
-          if ($finalCert.Status -eq "Valid") {
-            Write-Host "✅ Verificación final: El ejecutable en target/release está firmado"
-          } else {
-            Write-Error "❌ Error: El ejecutable reemplazado no tiene firma válida"
-            exit 1
-          }
-
-      # ============= EMPAQUETAR BINARIO FIRMADO =============
-
-      - name: 🔨 Build using tauri action (build only, no release upload)
-        uses: tauri-apps/tauri-action@v0.5.25
         env:
-          RUSTFLAGS: "-C target-feature=+crt-static"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           TAURI_BUNDLE_IDENTIFIER: "anarch.ai"
-          TAURI_BUNDLE_VERSION: ${{ inputs.package_version }}
-        with:
-          args: '--verbose'
-          # Note: No releaseId here - we upload manually after code signing
+        run: |
+          Write-Host "📦 Creando instaladores con Tauri CLI (sin recompilar el binario)..."
 
-      - name: ✅ Verify app executable is still signed after Tauri build
+          cd src-tauri
+
+          # CRÍTICO: Usar --bundles para SOLO crear los instaladores sin recompilar el binario
+          # Esto preservará el ejecutable firmado que ya tenemos en target/release/
+          bun x --yes @tauri-apps/cli@latest build --bundles nsis,msi --verbose
+
+          cd ..
+
+          Write-Host "✅ Instaladores creados exitosamente"
+
+      - name: ✅ Verify app executable is still signed after bundling
         shell: pwsh
         run: |
-          Write-Host "🔍 Verificando que el ejecutable sigue firmado después del build de Tauri..."
+          Write-Host "🔍 Verificando que el ejecutable sigue firmado después del empaquetado..."
 
-          $targetExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+          $targetExe = ".\src-tauri\target\release\anarch-ai.exe"
 
           if (-not (Test-Path $targetExe)) {
             Write-Error "❌ No se encontró el ejecutable en: $targetExe"
@@ -434,11 +423,11 @@ jobs:
           $cert = Get-AuthenticodeSignature -FilePath $targetExe
 
           if ($cert.Status -eq "Valid") {
-            Write-Host "✅ CONFIRMADO: El ejecutable que será empaquetado está firmado"
+            Write-Host "✅ CONFIRMADO: El ejecutable que fue empaquetado está firmado"
             Write-Host "   📋 Firmado por: $($cert.SignerCertificate.Subject)"
-            Write-Host "   📝 Esto significa que el instalador incluirá un ejecutable firmado"
+            Write-Host "   📝 Esto significa que el instalador incluye un ejecutable firmado"
           } else {
-            Write-Error "❌ CRÍTICO: El ejecutable perdió su firma después del build de Tauri"
+            Write-Error "❌ CRÍTICO: El ejecutable perdió su firma después del empaquetado"
             Write-Error "   Estado: $($cert.Status)"
             Write-Error "   Esto causará que la app instalada no esté firmada"
             exit 1
