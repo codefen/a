@@ -387,6 +387,37 @@ jobs:
             exit 1
           }
 
+      - name: 🔒 Prevent recompilation by updating timestamps
+        shell: pwsh
+        run: |
+          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
+
+          Write-Host "🔒 Actualizando timestamps para prevenir recompilación de cargo..."
+
+          # CRÍTICO: Actualizar el timestamp del binario firmado a "ahora + 1 minuto"
+          # Esto hace que cargo piense que el binario está más actualizado que el código fuente
+          # y por lo tanto no necesita recompilarlo
+          $futureTime = (Get-Date).AddMinutes(1)
+          (Get-Item $appExe).LastWriteTime = $futureTime
+          (Get-Item $appExe).LastAccessTime = $futureTime
+          (Get-Item $appExe).CreationTime = $futureTime
+
+          Write-Host "✅ Timestamp del binario actualizado a: $futureTime"
+
+          # También actualizar timestamps de archivos .d de cargo para forzar que piense que todo está actualizado
+          $dFiles = Get-ChildItem -Path ".\src-tauri\target\release" -Filter "*.d" -ErrorAction SilentlyContinue
+          foreach ($dFile in $dFiles) {
+            $dFile.LastWriteTime = $futureTime
+          }
+
+          # Actualizar timestamp del directorio deps también
+          $depsDir = ".\src-tauri\target\release\deps"
+          if (Test-Path $depsDir) {
+            (Get-Item $depsDir).LastWriteTime = $futureTime
+          }
+
+          Write-Host "✅ Timestamps actualizados - cargo NO debería recompilar"
+
       # ============= EMPAQUETAR BINARIO FIRMADO (SIN RECOMPILAR) =============
 
       - name: 📦 Create installers using Tauri CLI (bundle only, no recompile)
@@ -395,18 +426,114 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           TAURI_BUNDLE_IDENTIFIER: "anarch.ai"
+          # CRÍTICO: Estas variables le dicen a Rust/Cargo que use el binario existente
+          RUSTC_FORCE_INCREMENTAL: "1"
+          CARGO_INCREMENTAL: "1"
+          # Variables para Plan B (en caso de que necesitemos firmar otra vez)
+          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
+          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
+          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
+          SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
         run: |
-          Write-Host "📦 Creando instaladores con Tauri CLI (sin recompilar el binario)..."
+          Write-Host "📦 Creando instaladores con Tauri CLI (preservando binario firmado)..."
+
+          # Guardar hash del binario firmado ANTES del empaquetado
+          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
+          $hashBefore = (Get-FileHash -Path $appExe -Algorithm SHA256).Hash
+          Write-Host "🔐 Hash del binario firmado ANTES: $hashBefore"
 
           cd src-tauri
 
-          # CRÍTICO: Usar --bundles para SOLO crear los instaladores sin recompilar el binario
-          # Esto preservará el ejecutable firmado que ya tenemos en target/release/
+          # CRÍTICO: Usar --bundles para SOLO crear los instaladores
+          # Los timestamps actualizados deberían prevenir que cargo recompile
           bun x --yes @tauri-apps/cli@latest build --bundles nsis,msi --verbose
 
           cd ..
 
-          Write-Host "✅ Instaladores creados exitosamente"
+          # Verificar que el binario NO fue recompilado comparando hashes
+          $hashAfter = (Get-FileHash -Path $appExe -Algorithm SHA256).Hash
+          Write-Host "🔐 Hash del binario DESPUÉS: $hashAfter"
+
+          if ($hashBefore -eq $hashAfter) {
+            Write-Host "✅ PERFECTO: El binario NO fue recompilado - firma preservada"
+          } else {
+            Write-Warning "⚠️ ADVERTENCIA: El binario fue recompilado durante el empaquetado"
+            Write-Warning "   Hash antes:  $hashBefore"
+            Write-Warning "   Hash después: $hashAfter"
+            Write-Warning "   Esto significa que necesitamos firmar el binario OTRA VEZ..."
+
+            # PLAN B: Si el binario fue recompilado, firmarlo AHORA
+            Write-Host "🔐 PLAN B: Firmando el binario recompilado..."
+
+            $totpFile = Join-Path $env:RUNNER_TEMP "totp_planb_$(New-Guid).txt"
+
+            try {
+              # Crear directorio signed-app si no existe
+              New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signed-app" | Out-Null
+
+              # Guardar TOTP
+              $env:SSL_TOTP_SECRET | Out-File -FilePath $totpFile -NoNewline -Encoding ASCII
+
+              # Firmar el binario recompilado
+              $arguments = @(
+                "sign",
+                "-credential_id", "`"$env:CREDENTIAL_ID`"",
+                "-input_file_path", "`"$(Resolve-Path $appExe)`"",
+                "-username", "`"$env:SSL_USERNAME`"",
+                "-password", "`"$env:SSL_PASSWORD`"",
+                "-output_dir_path", "`"$env:GITHUB_WORKSPACE\signed-app`"",
+                "-totp_secret", "`"$(Get-Content $totpFile -Raw)`""
+              )
+
+              $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
+              $batDir = Split-Path -Parent $batPath
+              Push-Location $batDir
+              try {
+                & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')"
+              } finally {
+                Pop-Location
+              }
+
+              if ($LASTEXITCODE -eq 0) {
+                # Copiar el firmado de vuelta
+                $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
+                if (Test-Path $signedExe) {
+                  Copy-Item -Path $signedExe -Destination $appExe -Force
+                  Write-Host "✅ Binario recompilado firmado exitosamente (Plan B)"
+
+                  # CRÍTICO: Ahora necesitamos RE-EMPAQUETAR con el binario firmado
+                  Write-Host "📦 Re-empaquetando instaladores con binario firmado..."
+
+                  # Actualizar timestamp otra vez para prevenir otra recompilación
+                  $futureTime = (Get-Date).AddMinutes(2)
+                  (Get-Item $appExe).LastWriteTime = $futureTime
+
+                  # Eliminar instaladores antiguos (sin firmar)
+                  Remove-Item -Path ".\src-tauri\target\release\bundle\nsis\*" -Force -ErrorAction SilentlyContinue
+                  Remove-Item -Path ".\src-tauri\target\release\bundle\msi\*" -Force -ErrorAction SilentlyContinue
+
+                  # Re-crear instaladores
+                  cd src-tauri
+                  bun x --yes @tauri-apps/cli@latest build --bundles nsis,msi --verbose
+                  cd ..
+
+                  Write-Host "✅ Instaladores re-empaquetados con binario firmado"
+                } else {
+                  Write-Error "❌ No se pudo firmar el binario recompilado"
+                  exit 1
+                }
+              } else {
+                Write-Error "❌ Error al firmar binario recompilado (Plan B)"
+                exit 1
+              }
+            } finally {
+              if (Test-Path $totpFile) {
+                Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
+
+          Write-Host "✅ Instaladores creados exitosamente con binario firmado"
 
       - name: ✅ Verify app executable is still signed after bundling
         shell: pwsh
