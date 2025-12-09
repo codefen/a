@@ -95,12 +95,7 @@ jobs:
           @"
           VITE_PORT=5173
           TAURI_PLATFORM=${{ matrix.platform }}
-          VITE_API_URI=https://api.codefend.com/index.php
           VITE_NODE_ENV=production
-          VITE_STRIPE_KEY_LIVE=${{ secrets.STRIPE_KEY }}
-          VITE_STRIPE_KEY_TEST=${{ secrets.STRIPE_KEY_TEST }}
-          VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          VITE_ENABLE_GOOGLE_AUTH=true
           VITE_DEBUG=false
           VITE_APP_ENV=production
           "@ | Out-File -FilePath .env -Encoding UTF8
@@ -109,6 +104,190 @@ jobs:
 
       - name: 🔨 Run build client
         run: bun run build
+
+      # ============= CONSTRUIR Y FIRMAR EL EJECUTABLE DE LA APP ANTES DEL EMPAQUETADO =============
+
+      - name: 🔨 Build Rust binary (without packaging)
+        shell: pwsh
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          Write-Host "🔨 Compilando binario de Rust sin empaquetar..."
+          cd src-tauri
+          cargo build --release --target x86_64-pc-windows-msvc
+          cd ..
+
+          # Verificar que el ejecutable se creó
+          $exePath = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "❌ No se encontró el ejecutable en: $exePath"
+            exit 1
+          }
+
+          Write-Host "✅ Binario compilado: $exePath"
+          $fileSize = (Get-Item $exePath).Length
+          Write-Host "📦 Tamaño: $([math]::Round($fileSize/1MB, 2)) MB"
+
+      - name: 🔍 Scan app executable with CodeSignTool
+        shell: pwsh
+        env:
+          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
+          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
+          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
+        run: |
+          $appExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+          Write-Host "🔍 Escaneando ejecutable de la app: $appExe"
+
+          if (-not (Test-Path "$appExe")) {
+            Write-Error "❌ Ejecutable de la app no encontrado: $appExe"
+            exit 1
+          }
+
+          $arguments = @(
+            "scan_code",
+            "-credential_id", "`"$env:CREDENTIAL_ID`"",
+            "-input_file_path", "`"$(Resolve-Path $appExe)`"",
+            "-username", "`"$env:SSL_USERNAME`"",
+            "-password", "`"$env:SSL_PASSWORD`""
+          )
+
+          $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
+          $batDir = Split-Path -Parent $batPath
+          Push-Location $batDir
+          try {
+            $scanOutput = & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')" 2>&1
+          } finally {
+            Pop-Location
+          }
+          Write-Host "Resultado del escaneo: $scanOutput"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ Error en el escaneo del ejecutable de la app"
+            exit 1
+          }
+
+          if ($scanOutput -match "code object is not a malware") {
+            Write-Host "✅ Ejecutable de la app verificado - no es malware, procediendo con la firma"
+          } else {
+            Write-Warning "⚠️ Advertencia en escaneo, pero continuando..."
+          }
+
+      - name: 🔐 Sign app executable with CodeSignTool
+        shell: pwsh
+        env:
+          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
+          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
+          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
+          SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
+        run: |
+          $appExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+          Write-Host "🔐 Firmando ejecutable de la app: $appExe"
+
+          # Crear directorio temporal para el archivo firmado
+          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signed-app" | Out-Null
+
+          # Crear archivo temporal para TOTP secret (seguridad)
+          $totpFile = Join-Path $env:RUNNER_TEMP "totp_app_$(New-Guid).txt"
+
+          try {
+            # Guardar TOTP en archivo temporal
+            $env:SSL_TOTP_SECRET | Out-File -FilePath $totpFile -NoNewline -Encoding ASCII
+
+            # Comando para firmar
+            $arguments = @(
+              "sign",
+              "-credential_id", "`"$env:CREDENTIAL_ID`"",
+              "-input_file_path", "`"$(Resolve-Path $appExe)`"",
+              "-username", "`"$env:SSL_USERNAME`"",
+              "-password", "`"$env:SSL_PASSWORD`"",
+              "-output_dir_path", "`"$env:GITHUB_WORKSPACE\signed-app`"",
+              "-totp_secret", "`"$(Get-Content $totpFile -Raw)`""
+            )
+
+            # Ejecutar firma
+            $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
+            $batDir = Split-Path -Parent $batPath
+            Push-Location $batDir
+            try {
+              & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')"
+            } finally {
+              Pop-Location
+            }
+
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "❌ Error al firmar ejecutable de la app"
+              exit 1
+            }
+
+            Write-Host "✅ Ejecutable de la app firmado exitosamente"
+
+          } finally {
+            # CRÍTICO: Limpiar archivo TOTP
+            if (Test-Path $totpFile) {
+              Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
+              Write-Host "🗑️ Archivo TOTP temporal limpiado"
+            }
+          }
+
+      - name: ✅ Verify app executable signature
+        shell: pwsh
+        run: |
+          $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
+
+          if (-not (Test-Path $signedExe)) {
+            Write-Error "❌ No se encontró el ejecutable firmado en: $signedExe"
+            exit 1
+          }
+
+          Write-Host "🔍 Verificando firma del ejecutable de la app..."
+          $cert = Get-AuthenticodeSignature -FilePath $signedExe
+
+          Write-Host "   Estado de firma: $($cert.Status)"
+
+          if ($cert.Status -eq "Valid") {
+            Write-Host "✅ Firma VÁLIDA del ejecutable de la app"
+            Write-Host "   📋 Detalles del certificado:"
+            Write-Host "      Firmado por: $($cert.SignerCertificate.Subject)"
+            Write-Host "      Emisor: $($cert.SignerCertificate.Issuer)"
+
+            if ($cert.TimeStamperCertificate) {
+              Write-Host "   ⏰ Timestamp válido: $($cert.TimeStamperCertificate.Subject)"
+            }
+          } else {
+            Write-Error "❌ Firma INVÁLIDA del ejecutable de la app"
+            Write-Error "   Error: $($cert.Status)"
+            exit 1
+          }
+
+      - name: 📂 Replace unsigned exe with signed exe
+        shell: pwsh
+        run: |
+          $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
+          $targetExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+
+          Write-Host "📂 Reemplazando ejecutable sin firmar con versión firmada..."
+          Write-Host "   Origen: $signedExe"
+          Write-Host "   Destino: $targetExe"
+
+          # Hacer backup del original por si acaso
+          $backupExe = "$targetExe.unsigned"
+          Copy-Item -Path $targetExe -Destination $backupExe -Force
+          Write-Host "💾 Backup creado: $backupExe"
+
+          # Reemplazar con el firmado
+          Copy-Item -Path $signedExe -Destination $targetExe -Force
+          Write-Host "✅ Ejecutable reemplazado con versión firmada"
+
+          # Verificar que el reemplazo fue exitoso
+          $finalCert = Get-AuthenticodeSignature -FilePath $targetExe
+          if ($finalCert.Status -eq "Valid") {
+            Write-Host "✅ Verificación final: El ejecutable en target/release está firmado"
+          } else {
+            Write-Error "❌ Error: El ejecutable reemplazado no tiene firma válida"
+            exit 1
+          }
+
+      # ============= AHORA TAURI EMPAQUETARÁ EL INSTALADOR CON EL EJECUTABLE YA FIRMADO =============
 
       - name: 🔨 Build using tauri action (build only, no release upload)
         uses: tauri-apps/tauri-action@v0.5.25
@@ -122,6 +301,31 @@ jobs:
         with:
           args: '--verbose'
           # Note: No releaseId here - we upload manually after code signing
+
+      - name: ✅ Verify app executable is still signed after Tauri build
+        shell: pwsh
+        run: |
+          Write-Host "🔍 Verificando que el ejecutable sigue firmado después del build de Tauri..."
+
+          $targetExe = ".\src-tauri\target\x86_64-pc-windows-msvc\release\anarch-ai.exe"
+
+          if (-not (Test-Path $targetExe)) {
+            Write-Error "❌ No se encontró el ejecutable en: $targetExe"
+            exit 1
+          }
+
+          $cert = Get-AuthenticodeSignature -FilePath $targetExe
+
+          if ($cert.Status -eq "Valid") {
+            Write-Host "✅ CONFIRMADO: El ejecutable que será empaquetado está firmado"
+            Write-Host "   📋 Firmado por: $($cert.SignerCertificate.Subject)"
+            Write-Host "   📝 Esto significa que el instalador incluirá un ejecutable firmado"
+          } else {
+            Write-Error "❌ CRÍTICO: El ejecutable perdió su firma después del build de Tauri"
+            Write-Error "   Estado: $($cert.Status)"
+            Write-Error "   Esto causará que la app instalada no esté firmada"
+            exit 1
+          }
 
       - name: ☕ Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
@@ -810,7 +1014,7 @@ jobs:
         shell: pwsh
         run: |
           # Limpiar directorios temporales
-          @("codesigntool", "signed") | ForEach-Object {
+          @("codesigntool", "signed", "signed-app") | ForEach-Object {
             if (Test-Path "$env:GITHUB_WORKSPACE\$_") {
               Remove-Item -Path "$env:GITHUB_WORKSPACE\$_" -Recurse -Force
               Write-Host "🗑️ Limpiado: $_"
