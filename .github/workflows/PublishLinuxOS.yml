@@ -88,12 +88,7 @@ jobs:
       #   run: |
       #     echo "VITE_PORT=5173" >> .env
       #     echo "TAURI_PLATFORM=${{ matrix.platform }}" >> .env
-      #     echo "VITE_API_URI=https://api.codefend.com/index.php" >> .env
       #     echo "VITE_NODE_ENV=production" >> .env
-      #     echo "VITE_STRIPE_KEY_LIVE=${{ secrets.STRIPE_KEY }}" >> .env
-      #     echo "VITE_STRIPE_KEY_TEST=${{ secrets.STRIPE_KEY_TEST }}" >> .env
-      #     echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
-      #     echo "VITE_ENABLE_GOOGLE_AUTH=true" >> .env
       #     echo "VITE_DEBUG=false" >> .env
       #     echo "VITE_APP_ENV=production" >> .env
           
@@ -158,14 +153,14 @@ jobs:
           fi
           
           # Verificar DEB si existe
-          deb_path="src-tauri/target/release/bundle/deb/codefend-panel_${package_version}_amd64.deb"
+          deb_path="src-tauri/target/release/bundle/deb/anarch-ai_${package_version}_amd64.deb"
           if [[ -f "$deb_path" ]]; then
             echo "✅ DEB package found: $deb_path"
             echo "   Size: $(du -h "$deb_path" | cut -f1)"
           fi
           
           # Verificar RPM si existe  
-          rpm_path="src-tauri/target/release/bundle/rpm/codefend-panel-${package_version}-1.x86_64.rpm"
+          rpm_path="src-tauri/target/release/bundle/rpm/anarch-ai-${package_version}-1.x86_64.rpm"
           if [[ -f "$rpm_path" ]]; then
             echo "✅ RPM package found: $rpm_path"
             echo "   Size: $(du -h "$rpm_path" | cut -f1)"
@@ -215,32 +210,6 @@ jobs:
             echo "   Setting empty signature..."
             echo "linux_x86_64_sig=" >> $GITHUB_OUTPUT
           fi
-
-      # - name: 🛡️ Attest build provenance (publish release only)
-      #   uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
-      #   env:
-      #     CARGO_HOME: /home/runner/.cargo
-      #     CARGO_INCREMENTAL: 0
-      #     CARGO_TERM_COLOR: always
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     subject-path: src-tauri/target/release/bundle/*
-      #     push-to-registry: false
-      #     show-summary: true
-      #     github-token: ${{ env.GITHUB_TOKEN }}
-  
-      # - name: 📜 Create SBOM
-      #   uses: anchore/sbom-action@55dc4ee22412511ee8c3142cbea40418e6cec693 # v0
-      #   with:
-      #     format: "spdx-json"
-      #     output-file: "sbom.spdx.json"
-      #     artifact-name: "linux_${{ matrix.target }}.sbom.spdx.json"
-  
-      # - name: 🛡️ Attest SBOM
-      #   uses: actions/attest-sbom@v2
-      #   with:
-      #     subject-path: 'src-tauri/target/release/codefend-panel'
-      #     sbom-path: "sbom.spdx.json"
 
       - name: 🛡️ Attest build provenance
         uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
