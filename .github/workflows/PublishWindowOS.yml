@@ -102,12 +102,7 @@ jobs:
 
           Write-Host "✅ Production environment file created"
 
-      - name: 🔨 Run build client
-        run: bun run build
-
-      # ============= SETUP CODESIGNTOOL PRIMERO =============
-
-      - name: ☕ Setup Java 17 (Temurin)
+      - name: ☕ Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -119,866 +114,130 @@ jobs:
         with:
           path: ${{ github.workspace }}/codesigntool
           key: codesigntool-windows-v1.3.0
-          restore-keys: |
-            codesigntool-windows-
+          restore-keys: codesigntool-windows-
 
-      - name: 📥 Download and Setup CodeSignTool
+      - name: 📥 Download CodeSignTool
         if: steps.cache-codesigntool.outputs.cache-hit != 'true'
-        id: setup-codesigntool
         shell: pwsh
         run: |
-          # Descargar CodeSignTool para Windows
-          Write-Host "📥 Descargando CodeSignTool (no en caché)..."
-          $toolUrl = "https://www.ssl.com/download/codesigntool-for-windows/"
-          $zipPath = "CodeSignTool.zip"
+          Write-Host "📥 Descargando CodeSignTool..."
+          Invoke-WebRequest -Uri "https://www.ssl.com/download/codesigntool-for-windows/" -OutFile "CodeSignTool.zip"
+          Expand-Archive -Path "CodeSignTool.zip" -DestinationPath "$env:GITHUB_WORKSPACE\codesigntool" -Force
+          Write-Host "✅ CodeSignTool descargado y extraído"
 
-          Invoke-WebRequest -Uri $toolUrl -OutFile $zipPath
-
-          # Verificar integridad del archivo
-          Write-Host "🔍 Verificando integridad del archivo descargado..."
-          $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
-          Write-Host "📋 Hash SHA256: $actualHash"
-
-          # Verificar tamaño del archivo (detección básica de anomalías)
-          $fileSize = (Get-Item $zipPath).Length
-          $minSize = 1MB
-          $maxSize = 500MB
-
-          if ($fileSize -lt $minSize -or $fileSize -gt $maxSize) {
-            Write-Error "❌ Tamaño de archivo sospechoso: $fileSize bytes (esperado: $minSize - $maxSize)"
-            exit 1
-          }
-          Write-Host "✅ Tamaño de archivo válido: $([math]::Round($fileSize/1MB, 2)) MB"
-
-          # Extraer
-          Write-Host "📦 Extrayendo CodeSignTool..."
-          Expand-Archive -Path $zipPath -DestinationPath "$env:GITHUB_WORKSPACE\codesigntool" -Force
-
-          # Verificar contenido
-          Write-Host "📂 Contenido de CodeSignTool:"
-          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Recurse -Name | Head -20
-
-      - name: 🔍 Locate CodeSignTool.bat
+      - name: 🔍 Locate CodeSignTool
         id: locate-codesigntool
         shell: pwsh
         run: |
-          # Verificar si hay JDK incluido
-          $jdkPath = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Filter "*jdk*" -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($jdkPath) {
-            Write-Host "✅ JDK encontrado en: $($jdkPath.FullName)"
-          } else {
-            Write-Host "⚠️ No se encontró JDK incluido"
-          }
-
-          # Buscar el archivo .bat - puede estar en diferentes ubicaciones
-          $possiblePaths = @(
-            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool.bat",
-            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool-v1.3.0\CodeSignTool.bat",
-            "$env:GITHUB_WORKSPACE\codesigntool\CodeSignTool-v1.2.7\CodeSignTool.bat"
-          )
-
-          $batFile = $null
-          foreach ($path in $possiblePaths) {
-            if (Test-Path $path) {
-              $batFile = $path
-              break
-            }
-          }
-
-          # Si no se encuentra en las rutas conocidas, buscar recursivamente
+          $batFile = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Filter "CodeSignTool*.bat" -Recurse | Select-Object -First 1
           if (-not $batFile) {
-            $foundBat = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\codesigntool" -Filter "CodeSignTool*.bat" -Recurse | Select-Object -First 1
-            if ($foundBat) {
-              $batFile = $foundBat.FullName
-            }
-          }
-
-          if (-not $batFile) {
-            Write-Error "❌ No se pudo encontrar CodeSignTool.bat"
+            Write-Error "❌ CodeSignTool.bat not found"
             exit 1
           }
-
-          Write-Host "✅ CodeSignTool.bat encontrado en: $batFile"
-          # Guardar como output del step
-          echo "CODESIGNTOOL_BAT=$batFile" >> $env:GITHUB_OUTPUT
-
-          # Verificar que el archivo es ejecutable
-          Write-Host "🔍 Verificando CodeSignTool.bat..."
-
-          # Obtener el directorio del bat file para verificar estructura
-          $batDir = Split-Path -Parent $batFile
-          Write-Host "📁 Directorio del bat file: $batDir"
+          $batDir = Split-Path -Parent $batFile.FullName
           echo "CODESIGNTOOL_DIR=$batDir" >> $env:GITHUB_OUTPUT
+          Write-Host "✅ CodeSignTool encontrado en: $batDir"
 
-          # Listar contenido del directorio
-          Write-Host "📋 Archivos en el directorio:"
-          Get-ChildItem -Path $batDir -Name
+      - name: 🔨 Build frontend
+        run: bun run build
 
-          # Verificar si existe el JDK en la misma estructura
-          $javaExe = Get-ChildItem -Path $batDir -Filter "java.exe" -Recurse | Select-Object -First 1
-          if ($javaExe) {
-            Write-Host "☕ Java encontrado en: $($javaExe.FullName)"
-          } else {
-            Write-Host "⚠️ Java no encontrado en el directorio del bat"
-          }
-
-      # ============= CONSTRUIR Y FIRMAR EL EJECUTABLE DE LA APP ANTES DEL EMPAQUETADO =============
-
-      - name: 🔨 Build Rust binary (without packaging)
+      - name: 🔨🔐 Build and Sign with Tauri
         shell: pwsh
         env:
           RUSTFLAGS: "-C target-feature=+crt-static"
-        run: |
-          Write-Host "🔨 Compilando binario de Rust sin empaquetar..."
-          cd src-tauri
-          # IMPORTANTE: Construir en target/release (sin --target) porque es la ubicación que Tauri usa
-          cargo build --release
-          cd ..
-
-          # Verificar que el ejecutable se creó
-          $exePath = ".\src-tauri\target\release\anarch-ai.exe"
-          if (-not (Test-Path $exePath)) {
-            Write-Error "❌ No se encontró el ejecutable en: $exePath"
-            exit 1
-          }
-
-          Write-Host "✅ Binario compilado: $exePath"
-          $fileSize = (Get-Item $exePath).Length
-          Write-Host "📦 Tamaño: $([math]::Round($fileSize/1MB, 2)) MB"
-
-      - name: 🔍 Scan app executable with CodeSignTool
-        shell: pwsh
-        env:
-          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
-          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
-          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
-        run: |
-          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
-          Write-Host "🔍 Escaneando ejecutable de la app: $appExe"
-
-          if (-not (Test-Path "$appExe")) {
-            Write-Error "❌ Ejecutable de la app no encontrado: $appExe"
-            exit 1
-          }
-
-          $arguments = @(
-            "scan_code",
-            "-credential_id", "`"$env:CREDENTIAL_ID`"",
-            "-input_file_path", "`"$(Resolve-Path $appExe)`"",
-            "-username", "`"$env:SSL_USERNAME`"",
-            "-password", "`"$env:SSL_PASSWORD`""
-          )
-
-          $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
-          $batDir = Split-Path -Parent $batPath
-          Push-Location $batDir
-          try {
-            $scanOutput = & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')" 2>&1
-          } finally {
-            Pop-Location
-          }
-          Write-Host "Resultado del escaneo: $scanOutput"
-
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ Error en el escaneo del ejecutable de la app"
-            exit 1
-          }
-
-          if ($scanOutput -match "code object is not a malware") {
-            Write-Host "✅ Ejecutable de la app verificado - no es malware, procediendo con la firma"
-          } else {
-            Write-Warning "⚠️ Advertencia en escaneo, pero continuando..."
-          }
-
-      - name: 🔐 Sign app executable IN-PLACE with CodeSignTool
-        shell: pwsh
-        env:
-          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
-          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
-          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
-          SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
-        run: |
-          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
-          Write-Host "🔐 Firmando ejecutable de la app IN-PLACE: $appExe"
-
-          # Crear directorio temporal para el archivo firmado
-          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signed-app" | Out-Null
-
-          # Crear archivo temporal para TOTP secret (seguridad)
-          $totpFile = Join-Path $env:RUNNER_TEMP "totp_app_$(New-Guid).txt"
-
-          try {
-            # Guardar TOTP en archivo temporal
-            $env:SSL_TOTP_SECRET | Out-File -FilePath $totpFile -NoNewline -Encoding ASCII
-
-            # Comando para firmar
-            $arguments = @(
-              "sign",
-              "-credential_id", "`"$env:CREDENTIAL_ID`"",
-              "-input_file_path", "`"$(Resolve-Path $appExe)`"",
-              "-username", "`"$env:SSL_USERNAME`"",
-              "-password", "`"$env:SSL_PASSWORD`"",
-              "-output_dir_path", "`"$env:GITHUB_WORKSPACE\signed-app`"",
-              "-totp_secret", "`"$(Get-Content $totpFile -Raw)`""
-            )
-
-            # Ejecutar firma
-            $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
-            $batDir = Split-Path -Parent $batPath
-            Push-Location $batDir
-            try {
-              & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')"
-            } finally {
-              Pop-Location
-            }
-
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "❌ Error al firmar ejecutable de la app"
-              exit 1
-            }
-
-            Write-Host "✅ Ejecutable de la app firmado exitosamente en directorio temporal"
-
-            # CRÍTICO: Copiar el ejecutable firmado de vuelta a la ubicación original
-            $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
-            if (Test-Path $signedExe) {
-              Copy-Item -Path $signedExe -Destination $appExe -Force
-              Write-Host "✅ Ejecutable firmado copiado de vuelta a: $appExe"
-            } else {
-              Write-Error "❌ No se encontró el ejecutable firmado en: $signedExe"
-              exit 1
-            }
-
-          } finally {
-            # CRÍTICO: Limpiar archivo TOTP
-            if (Test-Path $totpFile) {
-              Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
-              Write-Host "🗑️ Archivo TOTP temporal limpiado"
-            }
-          }
-
-      - name: ✅ Verify app executable signature
-        shell: pwsh
-        run: |
-          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
-
-          if (-not (Test-Path $appExe)) {
-            Write-Error "❌ No se encontró el ejecutable en: $appExe"
-            exit 1
-          }
-
-          Write-Host "🔍 Verificando firma del ejecutable de la app..."
-          $cert = Get-AuthenticodeSignature -FilePath $appExe
-
-          Write-Host "   Estado de firma: $($cert.Status)"
-
-          if ($cert.Status -eq "Valid") {
-            Write-Host "✅ Firma VÁLIDA del ejecutable de la app"
-            Write-Host "   📋 Detalles del certificado:"
-            Write-Host "      Firmado por: $($cert.SignerCertificate.Subject)"
-            Write-Host "      Emisor: $($cert.SignerCertificate.Issuer)"
-
-            if ($cert.TimeStamperCertificate) {
-              Write-Host "   ⏰ Timestamp válido: $($cert.TimeStamperCertificate.Subject)"
-            }
-          } else {
-            Write-Error "❌ Firma INVÁLIDA del ejecutable de la app"
-            Write-Error "   Error: $($cert.Status)"
-            exit 1
-          }
-
-      - name: 🔒 Prevent recompilation by updating timestamps
-        shell: pwsh
-        run: |
-          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
-
-          Write-Host "🔒 Actualizando timestamps para prevenir recompilación de cargo..."
-
-          # CRÍTICO: Actualizar el timestamp del binario firmado a "ahora + 1 minuto"
-          # Esto hace que cargo piense que el binario está más actualizado que el código fuente
-          # y por lo tanto no necesita recompilarlo
-          $futureTime = (Get-Date).AddMinutes(1)
-          (Get-Item $appExe).LastWriteTime = $futureTime
-          (Get-Item $appExe).LastAccessTime = $futureTime
-          (Get-Item $appExe).CreationTime = $futureTime
-
-          Write-Host "✅ Timestamp del binario actualizado a: $futureTime"
-
-          # También actualizar timestamps de archivos .d de cargo para forzar que piense que todo está actualizado
-          $dFiles = Get-ChildItem -Path ".\src-tauri\target\release" -Filter "*.d" -ErrorAction SilentlyContinue
-          foreach ($dFile in $dFiles) {
-            $dFile.LastWriteTime = $futureTime
-          }
-
-          # Actualizar timestamp del directorio deps también
-          $depsDir = ".\src-tauri\target\release\deps"
-          if (Test-Path $depsDir) {
-            (Get-Item $depsDir).LastWriteTime = $futureTime
-          }
-
-          Write-Host "✅ Timestamps actualizados - cargo NO debería recompilar"
-
-      # ============= EMPAQUETAR BINARIO FIRMADO (SIN RECOMPILAR) =============
-
-      - name: 📦 Create installers using Tauri CLI (bundle only, no recompile)
-        shell: pwsh
-        env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           TAURI_BUNDLE_IDENTIFIER: "anarch.ai"
-          # CRÍTICO: Estas variables le dicen a Rust/Cargo que use el binario existente
-          RUSTC_FORCE_INCREMENTAL: "1"
-          CARGO_INCREMENTAL: "1"
-          # Variables para Plan B (en caso de que necesitemos firmar otra vez)
+          TAURI_BUNDLE_VERSION: ${{ inputs.package_version }}
           SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
           SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
           CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
           SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
+          CODESIGNTOOL_DIR: ${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_DIR }}
         run: |
-          Write-Host "📦 Creando instaladores con Tauri CLI (preservando binario firmado)..."
-
-          # Guardar hash del binario firmado ANTES del empaquetado
-          $appExe = ".\src-tauri\target\release\anarch-ai.exe"
-          $hashBefore = (Get-FileHash -Path $appExe -Algorithm SHA256).Hash
-          Write-Host "🔐 Hash del binario firmado ANTES: $hashBefore"
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host "🔨🔐 CONSTRUYENDO Y FIRMANDO CON TAURI" -ForegroundColor Cyan
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "Tauri llamará automáticamente al script de firma para:"
+          Write-Host "  ✓ Binario de la aplicación (anarch-ai.exe)"
+          Write-Host "  ✓ Instalador NSIS (.exe)"
+          Write-Host "  ✓ Instalador MSI (.msi)"
+          Write-Host ""
 
           cd src-tauri
-
-          # CRÍTICO: Usar --bundles para SOLO crear los instaladores
-          # Los timestamps actualizados deberían prevenir que cargo recompile
           bun x --yes @tauri-apps/cli@latest build --bundles nsis,msi --verbose
-
           cd ..
 
-          # Verificar que el binario NO fue recompilado comparando hashes
-          $hashAfter = (Get-FileHash -Path $appExe -Algorithm SHA256).Hash
-          Write-Host "🔐 Hash del binario DESPUÉS: $hashAfter"
+          Write-Host ""
+          Write-Host "========================================" -ForegroundColor Green
+          Write-Host "✅ BUILD Y FIRMA COMPLETADOS" -ForegroundColor Green
+          Write-Host "========================================" -ForegroundColor Green
 
-          if ($hashBefore -eq $hashAfter) {
-            Write-Host "✅ PERFECTO: El binario NO fue recompilado - firma preservada"
-          } else {
-            Write-Warning "⚠️ ADVERTENCIA: El binario fue recompilado durante el empaquetado"
-            Write-Warning "   Hash antes:  $hashBefore"
-            Write-Warning "   Hash después: $hashAfter"
-            Write-Warning "   Esto significa que necesitamos firmar el binario OTRA VEZ..."
-
-            # PLAN B: Si el binario fue recompilado, firmarlo AHORA
-            Write-Host "🔐 PLAN B: Firmando el binario recompilado..."
-
-            $totpFile = Join-Path $env:RUNNER_TEMP "totp_planb_$(New-Guid).txt"
-
-            try {
-              # Crear directorio signed-app si no existe
-              New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signed-app" | Out-Null
-
-              # Guardar TOTP
-              $env:SSL_TOTP_SECRET | Out-File -FilePath $totpFile -NoNewline -Encoding ASCII
-
-              # Firmar el binario recompilado
-              $arguments = @(
-                "sign",
-                "-credential_id", "`"$env:CREDENTIAL_ID`"",
-                "-input_file_path", "`"$(Resolve-Path $appExe)`"",
-                "-username", "`"$env:SSL_USERNAME`"",
-                "-password", "`"$env:SSL_PASSWORD`"",
-                "-output_dir_path", "`"$env:GITHUB_WORKSPACE\signed-app`"",
-                "-totp_secret", "`"$(Get-Content $totpFile -Raw)`""
-              )
-
-              $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
-              $batDir = Split-Path -Parent $batPath
-              Push-Location $batDir
-              try {
-                & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')"
-              } finally {
-                Pop-Location
-              }
-
-              if ($LASTEXITCODE -eq 0) {
-                # Copiar el firmado de vuelta
-                $signedExe = "$env:GITHUB_WORKSPACE\signed-app\anarch-ai.exe"
-                if (Test-Path $signedExe) {
-                  Copy-Item -Path $signedExe -Destination $appExe -Force
-                  Write-Host "✅ Binario recompilado firmado exitosamente (Plan B)"
-
-                  # CRÍTICO: Ahora necesitamos RE-EMPAQUETAR con el binario firmado
-                  Write-Host "📦 Re-empaquetando instaladores con binario firmado..."
-
-                  # Actualizar timestamp otra vez para prevenir otra recompilación
-                  $futureTime = (Get-Date).AddMinutes(2)
-                  (Get-Item $appExe).LastWriteTime = $futureTime
-
-                  # Eliminar instaladores antiguos (sin firmar)
-                  Remove-Item -Path ".\src-tauri\target\release\bundle\nsis\*" -Force -ErrorAction SilentlyContinue
-                  Remove-Item -Path ".\src-tauri\target\release\bundle\msi\*" -Force -ErrorAction SilentlyContinue
-
-                  # Re-crear instaladores
-                  cd src-tauri
-                  bun x --yes @tauri-apps/cli@latest build --bundles nsis,msi --verbose
-                  cd ..
-
-                  Write-Host "✅ Instaladores re-empaquetados con binario firmado"
-                } else {
-                  Write-Error "❌ No se pudo firmar el binario recompilado"
-                  exit 1
-                }
-              } else {
-                Write-Error "❌ Error al firmar binario recompilado (Plan B)"
-                exit 1
-              }
-            } finally {
-              if (Test-Path $totpFile) {
-                Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
-              }
-            }
-          }
-
-          Write-Host "✅ Instaladores creados exitosamente con binario firmado"
-
-      - name: ✅ Verify app executable is still signed after bundling
+      - name: ✅ Verify all signatures
         shell: pwsh
         run: |
-          Write-Host "🔍 Verificando que el ejecutable sigue firmado después del empaquetado..."
+          Write-Host "🔍 Verificando todas las firmas..." -ForegroundColor Cyan
 
-          $targetExe = ".\src-tauri\target\release\anarch-ai.exe"
+          $allFiles = @()
+          $allFiles += Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
+          $allFiles += Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
+          $allFiles += Get-Item ".\src-tauri\target\release\anarch-ai.exe" -ErrorAction SilentlyContinue
 
-          if (-not (Test-Path $targetExe)) {
-            Write-Error "❌ No se encontró el ejecutable en: $targetExe"
+          if ($allFiles.Count -eq 0) {
+            Write-Error "❌ No se encontraron archivos para verificar"
             exit 1
           }
 
-          $cert = Get-AuthenticodeSignature -FilePath $targetExe
-
-          if ($cert.Status -eq "Valid") {
-            Write-Host "✅ CONFIRMADO: El ejecutable que fue empaquetado está firmado"
-            Write-Host "   📋 Firmado por: $($cert.SignerCertificate.Subject)"
-            Write-Host "   📝 Esto significa que el instalador incluye un ejecutable firmado"
-          } else {
-            Write-Error "❌ CRÍTICO: El ejecutable perdió su firma después del empaquetado"
-            Write-Error "   Estado: $($cert.Status)"
-            Write-Error "   Esto causará que la app instalada no esté firmada"
-            exit 1
-          }
-
-      # ============= FIRMAR EL INSTALADOR (MSI/EXE) =============
-
-      - name: 📦 Prepare files for signing
-        shell: pwsh
-        run: |
-          # Crear directorio para archivos firmados
-          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signed"
-          
-          # Buscar archivos generados por Tauri (excluyendo archivos .sig)
-          $msiFiles = Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          $nsisFiles = Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*setup.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          
-          # También buscar cualquier .exe que no sea .sig
-          if (-not $nsisFiles) {
-            $nsisFiles = Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          }
-          
-          Write-Host "📝 Archivos encontrados para firmar:"
-          Write-Host "📁 Buscando en: $(Resolve-Path '.\src-tauri\target\release\bundle')"
-          
-          if ($msiFiles) {
-            foreach ($file in $msiFiles) {
-              # Convertir a ruta relativa desde el directorio de trabajo
-              $relativePath = ".\src-tauri\target\release\bundle\msi\$($file.Name)"
-              Write-Host "  MSI: $($file.FullName)"
-              Write-Host "  MSI (relative): $relativePath"
-              # Exportar ruta ABSOLUTA para evitar problemas de cwd
-              echo "MSI_FILE=$($file.FullName)" >> $env:GITHUB_ENV
-            }
-          } else {
-            Write-Host "  ⚠️ No se encontraron archivos MSI"
-          }
-          
-          if ($nsisFiles) {
-            foreach ($file in $nsisFiles) {
-              # Convertir a ruta relativa desde el directorio de trabajo
-              $relativePath = ".\src-tauri\target\release\bundle\nsis\$($file.Name)"
-              Write-Host "  EXE: $($file.FullName)"
-              Write-Host "  EXE (relative): $relativePath"
-              # Exportar ruta ABSOLUTA para evitar problemas de cwd
-              echo "EXE_FILE=$($file.FullName)" >> $env:GITHUB_ENV
-            }
-          } else {
-            Write-Host "  ⚠️ No se encontraron archivos EXE"
-            # Listar todos los archivos en el directorio para debug
-            Write-Host "📋 Contenido del directorio nsis:"
-            Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -ErrorAction SilentlyContinue | ForEach-Object {
-              Write-Host "    $($_.Name)"
-            }
-          }
-
-      - name: 🔍 Scan MSI file with CodeSignTool
-        if: env.MSI_FILE != ''
-        shell: pwsh
-        env:
-          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
-          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
-          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
-        run: |
-          Write-Host "🔍 Escaneando MSI: $env:MSI_FILE"
-          
-          # Verificar que el archivo existe antes del escaneo
-          if (-not (Test-Path "$env:MSI_FILE")) {
-            Write-Error "❌ Archivo MSI no encontrado: $env:MSI_FILE"
-            exit 1
-          }
-          
-          # Comando para escanear - escapar rutas con espacios
-          $arguments = @(
-            "scan_code",
-            "-credential_id", "`"$env:CREDENTIAL_ID`"",
-            "-input_file_path", "`"$env:MSI_FILE`"",
-            "-username", "`"$env:SSL_USERNAME`"",
-            "-password", "`"$env:SSL_PASSWORD`""
-          )
-          
-          # Ejecutar escaneo
-          $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
-          $batDir = Split-Path -Parent $batPath
-          Push-Location $batDir
-          try {
-            $scanOutput = & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')" 2>&1
-          } finally {
-            Pop-Location
-          }
-          Write-Host "Resultado del escaneo: $scanOutput"
-          
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ Error en el escaneo del MSI"
-            exit 1
-          }
-          
-          # Verificar que el código no es malware
-          if ($scanOutput -match "code object is not a malware") {
-            Write-Host "✅ MSI verificado - no es malware, procediendo con la firma"
-          } else {
-            Write-Warning "⚠️ Advertencia en escaneo, pero continuando..."
-          }
-
-      - name: 🔐 Sign MSI file with CodeSignTool
-        if: env.MSI_FILE != ''
-        shell: pwsh
-        env:
-          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
-          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
-          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
-          SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
-        run: |
-          Write-Host "🔐 Firmando MSI: $env:MSI_FILE"
-
-          # Crear archivo temporal para TOTP secret (seguridad)
-          $totpFile = Join-Path $env:RUNNER_TEMP "totp_$(New-Guid).txt"
-
-          try {
-            # Guardar TOTP en archivo temporal
-            $env:SSL_TOTP_SECRET | Out-File -FilePath $totpFile -NoNewline -Encoding ASCII
-
-            # Comando para firmar - usar archivo temporal para TOTP
-            $arguments = @(
-              "sign",
-              "-credential_id", "`"$env:CREDENTIAL_ID`"",
-              "-input_file_path", "`"$env:MSI_FILE`"",
-              "-username", "`"$env:SSL_USERNAME`"",
-              "-password", "`"$env:SSL_PASSWORD`"",
-              "-output_dir_path", "`"$env:GITHUB_WORKSPACE\signed`"",
-              "-totp_secret", "`"$(Get-Content $totpFile -Raw)`""
-            )
-
-            # Ejecutar firma
-            $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
-            $batDir = Split-Path -Parent $batPath
-            Push-Location $batDir
-            try {
-              & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')"
-            } finally {
-              Pop-Location
-            }
-
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "❌ Error al firmar MSI"
-              exit 1
-            }
-
-            Write-Host "✅ MSI firmado exitosamente"
-
-          } finally {
-            # CRÍTICO: Limpiar archivo TOTP
-            if (Test-Path $totpFile) {
-              Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
-              Write-Host "🗑️ Archivo TOTP temporal limpiado"
-            }
-          }
-
-      - name: 🔍 Scan EXE file with CodeSignTool
-        if: env.EXE_FILE != ''
-        shell: pwsh
-        env:
-          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
-          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
-          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
-        run: |
-          Write-Host "🔍 Escaneando EXE: $env:EXE_FILE"
-          
-          # Verificar que el archivo existe antes del escaneo
-          if (-not (Test-Path "$env:EXE_FILE")) {
-            Write-Error "❌ Archivo EXE no encontrado: $env:EXE_FILE"
-            exit 1
-          }
-          
-          # Comando para escanear - escapar rutas con espacios
-          $arguments = @(
-            "scan_code",
-            "-credential_id", "`"$env:CREDENTIAL_ID`"",
-            "-input_file_path", "`"$env:EXE_FILE`"",
-            "-username", "`"$env:SSL_USERNAME`"",
-            "-password", "`"$env:SSL_PASSWORD`""
-          )
-          
-          # Ejecutar escaneo
-          $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
-          $batDir = Split-Path -Parent $batPath
-          Push-Location $batDir
-          try {
-            $scanOutput = & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')" 2>&1
-          } finally {
-            Pop-Location
-          }
-          Write-Host "Resultado del escaneo: $scanOutput"
-          
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ Error en el escaneo del EXE"
-            exit 1
-          }
-          
-          # Verificar que el código no es malware
-          if ($scanOutput -match "code object is not a malware") {
-            Write-Host "✅ EXE verificado - no es malware, procediendo con la firma"
-          } else {
-            Write-Warning "⚠️ Advertencia en escaneo, pero continuando..."
-          }
-
-      - name: 🔐 Sign EXE file with CodeSignTool
-        if: env.EXE_FILE != ''
-        shell: pwsh
-        env:
-          SSL_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
-          SSL_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
-          CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
-          SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
-        run: |
-          Write-Host "🔐 Firmando EXE: $env:EXE_FILE"
-
-          # Crear archivo temporal para TOTP secret (seguridad)
-          $totpFile = Join-Path $env:RUNNER_TEMP "totp_$(New-Guid).txt"
-
-          try {
-            # Guardar TOTP en archivo temporal
-            $env:SSL_TOTP_SECRET | Out-File -FilePath $totpFile -NoNewline -Encoding ASCII
-
-            # Comando para firmar - usar archivo temporal para TOTP
-            $arguments = @(
-              "sign",
-              "-credential_id", "`"$env:CREDENTIAL_ID`"",
-              "-input_file_path", "`"$env:EXE_FILE`"",
-              "-username", "`"$env:SSL_USERNAME`"",
-              "-password", "`"$env:SSL_PASSWORD`"",
-              "-output_dir_path", "`"$env:GITHUB_WORKSPACE\signed`"",
-              "-totp_secret", "`"$(Get-Content $totpFile -Raw)`""
-            )
-
-            # Ejecutar firma
-            $batPath = "${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_BAT }}"
-            $batDir = Split-Path -Parent $batPath
-            Push-Location $batDir
-            try {
-              & cmd.exe /c "`"CodeSignTool.bat`" $($arguments -join ' ')"
-            } finally {
-              Pop-Location
-            }
-
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "❌ Error al firmar EXE"
-              exit 1
-            }
-
-            Write-Host "✅ EXE firmado exitosamente"
-
-          } finally {
-            if (Test-Path $totpFile) {
-              Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
-              Write-Host "🗑️ Archivo TOTP temporal limpiado"
-            }
-          }
-
-      - name: ✅ Verify signatures
-        shell: pwsh
-        run: |
-          Write-Host "🔍 Verificando firmas digitales de los binarios finales..."
-          
-          # Buscar primero en carpeta /signed (excluyendo .sig)
-          $finalFiles = @()
-          $signedFiles = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\signed" -Include "*.msi", "*.exe" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          if ($signedFiles -and $signedFiles.Count -gt 0) {
-            Write-Host "📁 Usando archivos firmados desde: $env:GITHUB_WORKSPACE\signed"
-            $finalFiles = $signedFiles
-          } else {
-            Write-Host "ℹ️ No hay archivos en /signed, verificando en ubicaciones originales"
-            $finalFiles += Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-            $finalFiles += Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          }
-          
-          if ($finalFiles.Count -eq 0) {
-            Write-Error "❌ No se encontraron archivos finales para verificar"
-            exit 1
-          }
-          
           $allValid = $true
-          
-          Write-Host "📋 Archivos a verificar:"
-          foreach ($file in $finalFiles) {
-            Write-Host "  - $($file.FullName)"
-          }
-          
-          Write-Host "`n🔍 Iniciando verificación de firmas..."
-          foreach ($file in $finalFiles) {
-            Write-Host "`n📄 Verificando: $($file.Name) ($($file.Length) bytes)"
-            
-            try {
-              # Obtener información del certificado usando Get-AuthenticodeSignature
-              $cert = Get-AuthenticodeSignature -FilePath $file.FullName
-              
-              Write-Host "   Estado de firma: $($cert.Status)"
-              
-              if ($cert.Status -eq "Valid") {
-                Write-Host "✅ Firma VÁLIDA"
-                Write-Host "   📋 Detalles del certificado:"
-                Write-Host "      Firmado por: $($cert.SignerCertificate.Subject)"
-                Write-Host "      Emisor: $($cert.SignerCertificate.Issuer)"
-                Write-Host "      Válido desde: $($cert.SignerCertificate.NotBefore)"
-                Write-Host "      Válido hasta: $($cert.SignerCertificate.NotAfter)"
-                
-                if ($cert.TimeStamperCertificate) {
-                  Write-Host "   ⏰ Timestamp válido: $($cert.TimeStamperCertificate.Subject)"
-                }
-                
-                # Verificar que es SSL.com
-                if ($cert.SignerCertificate.Subject -like "*SSL Corp*" -or $cert.SignerCertificate.Issuer -like "*SSL.com*") {
-                  Write-Host "   🏢 Certificado de SSL.com confirmado"
-                } else {
-                  Write-Warning "   ⚠️ Certificado no parece ser de SSL.com"
-                }
-                
-              } else {
-                Write-Host "❌ Firma INVÁLIDA o faltante"
-                Write-Host "   Error: $($cert.Status)"
-                if ($cert.StatusMessage) {
-                  Write-Host "   Mensaje: $($cert.StatusMessage)"
-                }
-                $allValid = $false
-              }
-              
-            } catch {
-              Write-Error "❌ Error al verificar firma de $($file.Name): $($_.Exception.Message)"
+
+          foreach ($file in $allFiles) {
+            $sig = Get-AuthenticodeSignature -FilePath $file.FullName
+            Write-Host "`n📄 $($file.Name): $($sig.Status)"
+
+            if ($sig.Status -eq "Valid") {
+              Write-Host "   ✅ Firmado por: $($sig.SignerCertificate.Subject)" -ForegroundColor Green
+            } else {
+              Write-Host "   ❌ FIRMA INVÁLIDA: $($sig.StatusMessage)" -ForegroundColor Red
               $allValid = $false
             }
           }
-          
-          Write-Host "`n📊 Resumen de verificación:"
-          if ($allValid) {
-            Write-Host "✅ TODOS los archivos tienen firmas válidas"
-            Write-Host "🎉 Los binarios firmados están listos para distribución"
-          } else {
-            Write-Error "❌ ALGUNOS archivos no tienen firmas válidas"
-            Write-Error "🚫 Los binarios NO están listos para distribución"
-            Write-Error "💡 Por favor revisa los errores arriba y corrige el proceso de firmado"
-            # CRÍTICO: Fallar el workflow si las firmas son inválidas
+
+          if (-not $allValid) {
+            Write-Error "`n❌ Algunos archivos no están firmados correctamente"
             exit 1
           }
 
-      
-      - name: 📂 Move signed files to correct location
-        shell: pwsh
-        run: |
-          Write-Host "📂 Gestionando archivos firmados..."
-          
-          # Verificar archivos en carpeta /signed (excluyendo archivos .sig)
-          $signedFiles = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\signed" -Include "*.exe", "*.msi" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
-          
-          if ($signedFiles.Count -gt 0) {
-            Write-Host "✅ Encontrados $($signedFiles.Count) archivos firmados en carpeta /signed"
-            
-            foreach ($file in $signedFiles) {
-              if ($file.Extension -eq ".msi") {
-                $destination = ".\src-tauri\target\release\bundle\msi\"
-                Write-Host "📥 Reemplazando MSI original con versión firmada: $($file.Name)"
-              } elseif ($file.Extension -eq ".exe") {
-                $destination = ".\src-tauri\target\release\bundle\nsis\"
-                Write-Host "📥 Reemplazando EXE original con versión firmada: $($file.Name)"
-              }
-              
-              if (-not (Test-Path $destination)) {
-                New-Item -ItemType Directory -Path $destination -Force
-              }
-              
-              Move-Item -Path $file.FullName -Destination $destination -Force
-              Write-Host "✅ Archivo firmado movido a: $destination$($file.Name)"
-            }
-          } else {
-            Write-Host "ℹ️ No se encontraron archivos en /signed, verificando si fueron firmados in-place"
-            
-            # Verificar si los archivos originales están ahora firmados
-            $originalFiles = @()
-            if ($env:MSI_FILE -and (Test-Path $env:MSI_FILE)) { 
-              $originalFiles += Get-Item $env:MSI_FILE 
-            }
-            if ($env:EXE_FILE -and (Test-Path $env:EXE_FILE)) { 
-              $originalFiles += Get-Item $env:EXE_FILE 
-            }
-            
-            foreach ($file in $originalFiles) {
-              $signature = Get-AuthenticodeSignature -FilePath $file.FullName
-              if ($signature.Status -eq "Valid") {
-                Write-Host "✅ $($file.Name) está firmado correctamente (in-place)"
-              } else {
-                Write-Warning "⚠️ $($file.Name) no parece estar firmado correctamente"
-              }
-            }
-          }
+          Write-Host "`n✅ TODOS LOS ARCHIVOS ESTÁN FIRMADOS CORRECTAMENTE" -ForegroundColor Green
 
-      - name: 🔏 Generate Tauri updater .sig for final signed binaries
+      - name: 🔏 Generate Tauri updater .sig files
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
-          Write-Host "🔏 Generando .sig del updater para binarios FINALES (post-codesigning)..."
+          Write-Host "🔏 Generando archivos .sig para el updater..."
           $artifacts = @()
           $artifacts += Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue
           $artifacts += Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue
 
           if ($artifacts.Count -eq 0) {
-            Write-Error "❌ No se encontraron artefactos finales para firmar con Tauri signer"
+            Write-Error "❌ No se encontraron artefactos"
             exit 1
           }
 
           foreach ($artifact in $artifacts) {
-            Write-Host "🖊️ Generando firma Tauri para: $($artifact.Name)"
+            Write-Host "🖊️  Generando firma Tauri para: $($artifact.Name)"
 
-            $filePath = "`"$($artifact.FullName)`""
-            
             $bunArgs = @(
               "x", "--yes", "@tauri-apps/cli@latest", "signer", "sign",
               "--private-key", "$env:TAURI_SIGNING_PRIVATE_KEY",
               "--password", "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
-              $filePath
+              "`"$($artifact.FullName)`""
             )
-            
-            $null = (& bun @bunArgs)
-            
+
+            & bun @bunArgs
+
             if ($LASTEXITCODE -ne 0) {
               Write-Error "❌ Error generando .sig para $($artifact.Name)"
               exit 1
@@ -986,11 +245,13 @@ jobs:
 
             $expectedSig = "$($artifact.FullName).sig"
             if (-not (Test-Path $expectedSig)) {
-              Write-Error "❌ No se generó el archivo .sig esperado: $expectedSig"
+              Write-Error "❌ No se generó el archivo .sig: $expectedSig"
               exit 1
             }
             Write-Host "✅ .sig generado: $expectedSig"
           }
+
+          Write-Host "`n✅ Todos los archivos .sig generados correctamente"
 
       - name: 🔍 Debug - List files before upload
         shell: pwsh
@@ -1071,8 +332,6 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.sig
           retention-days: 7
 
-      # ============= EXTRAER SIGNATURES PARA OUTPUTS =============
-      
       - name: 📝 Extract signatures for outputs
         id: extract-signatures
         shell: pwsh
@@ -1126,8 +385,6 @@ jobs:
           Write-Host "   📝 Signature length: $($signature.Length) chars"
           Write-Host "   🔍 Signature preview: $($signature.Substring(0, [Math]::Min(50, $signature.Length)))..."
 
-      # ============= LIMPIAR ARCHIVOS TEMPORALES =============
-      
       - name: 🧹 Cleanup temporary files
         if: always()
         shell: pwsh
@@ -1139,7 +396,7 @@ jobs:
               Write-Host "🗑️ Limpiado: $_"
             }
           }
-          
+
           # Limpiar archivo ZIP
           if (Test-Path "CodeSignTool.zip") {
             Remove-Item "CodeSignTool.zip" -Force
