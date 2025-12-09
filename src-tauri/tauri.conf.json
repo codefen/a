@@ -54,13 +54,14 @@
 			"signingIdentity": null
 	  },
 		"windows": {
-			"webviewInstallMode": { 
+			"webviewInstallMode": {
 				"type": "offlineInstaller",
-				"silent": true 
+				"silent": true
 			},
 			"certificateThumbprint": null,
 			"digestAlgorithm": "sha256",
-			"timestampUrl": ""
+			"timestampUrl": "",
+			"signCommand": "powershell -ExecutionPolicy Bypass -File \"../scripts/sign-with-codesigntool.ps1\" \"%1\""
 		},
 		"linux": {
 			"deb": {
