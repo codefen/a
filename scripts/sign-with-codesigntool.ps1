@@ -5,10 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Importar módulo de seguridad para Get-AuthenticodeSignature
-Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
-
-$FilePath = $FilePath.Trim('"', "'", ' ')
+$FilePath = $FilePath.Trim().Trim('"').Trim("'")
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Firmando archivo con SSL.com eSigner" -ForegroundColor Cyan
@@ -53,7 +50,9 @@ $totpFile = Join-Path $env:TEMP "totp_$guidString.txt"
 
 try {
     # Guardar TOTP en archivo temporal
-    [System.IO.File]::WriteAllText($totpFile, $TotpSecret.Trim())
+    [System.IO.File]::WriteAllText($totpFile, ($TotpSecret.Trim()))
+
+    $totpValue = [System.IO.File]::ReadAllText($totpFile).Trim()
 
     Write-Host "Preparando firma..."
     Write-Host "   Output Dir: $tempOutputDir"
@@ -89,8 +88,7 @@ try {
     # Verificar que el archivo firmado existe
     $signedFile = Join-Path $tempOutputDir $FileName
     if (-not (Test-Path $signedFile)) {
-        Write-Error "Signed file not found at: $signedFile"
-        Write-Host "Contents of temp dir:"
+        Write-Error "Signed file not found: $signedFile"
         Get-ChildItem $tempOutputDir | ForEach-Object { Write-Host "  - $($_.Name)" }
         exit 1
     }
@@ -101,7 +99,7 @@ try {
 
     # Verificar firma
     Write-Host "Verificando firma..."
-    $signature = Get-AuthenticodeSignature -FilePath $FilePath
+    $signature = [System.Management.Automation.Signature]::GetSignature($FilePath)
 
     if ($signature.Status -eq "Valid") {
         Write-Host "Archivo firmado exitosamente" -ForegroundColor Green
@@ -110,20 +108,13 @@ try {
             Write-Host "   Timestamp: $($signature.TimeStamperCertificate.Subject)" -ForegroundColor Green
         }
     } else {
-        Write-Error "Firma invalida: $($signature.Status)"
+        Write-Error "Firma inválida: $($signature.Status)"
         Write-Error "   Mensaje: $($signature.StatusMessage)"
         exit 1
     }
-
 } finally {
-    # CRITICO: Limpiar archivos temporales
-    if (Test-Path $totpFile) {
-        Remove-Item $totpFile -Force -ErrorAction SilentlyContinue
-    }
-    if (Test-Path $tempOutputDir) {
-        Remove-Item $tempOutputDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    # Limpiar logs temporales
+    if (Test-Path $totpFile) { Remove-Item $totpFile -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $tempOutputDir) { Remove-Item $tempOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
     Remove-Item "$env:TEMP\cst_stdout.txt" -Force -ErrorAction SilentlyContinue
     Remove-Item "$env:TEMP\cst_stderr.txt" -Force -ErrorAction SilentlyContinue
 }
