@@ -5,6 +5,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Importar módulo de seguridad para Get-AuthenticodeSignature
+Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+
 $FilePath = $FilePath.Trim('"', "'", ' ')
 
 Write-Host "========================================" -ForegroundColor Cyan
