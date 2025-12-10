@@ -65,6 +65,23 @@ jobs:
               }
             }
 
+  build_linux:
+    needs: [createRelease]
+    uses: ./.github/workflows/PublishLinuxOS.yml
+    with:
+      release_id: ${{ needs.createRelease.outputs.release_id }}
+      package_version: ${{ needs.createRelease.outputs.package_version }}
+    secrets: inherit
+
+  build_macos:
+    needs: [createRelease]
+    uses: ./.github/workflows/PublishMacOs.yml
+    with:
+      release_id: ${{ needs.createRelease.outputs.release_id }}
+      package_version: ${{ needs.createRelease.outputs.package_version }}
+      release_upload_url: ${{ needs.createRelease.outputs.release_upload_url }}
+    secrets: inherit
+
   build_windows:
     needs: [createRelease]
     uses: ./.github/workflows/PublishWindowOS.yml
@@ -75,7 +92,7 @@ jobs:
     secrets: inherit
 
   release_github:
-    needs: [createRelease, build_windows]
+    needs: [createRelease, build_linux, build_macos, build_windows]
     name: 🎆 Release Github
     permissions:
       contents: write
@@ -97,7 +114,14 @@ jobs:
           package_version="${{ needs.createRelease.outputs.package_version }}"
           pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+          macos_aarch64_name_raw=""
+          macos_x86_64_name_raw=""
+          linux_x86_64_name_raw=""
           windows_x86_64_name_raw="${{ needs.build_windows.outputs.windows_x86_64_name }}"
+
+          macos_aarch64_name=${macos_aarch64_name_raw// /.}
+          macos_x86_64_name=${macos_x86_64_name_raw// /.}
+          linux_x86_64_name=${linux_x86_64_name_raw// /.}
           windows_x86_64_name=${windows_x86_64_name_raw// /.}
 
           cat > latest.json << EOL
@@ -106,6 +130,18 @@ jobs:
             "notes": "Anarch AI ${package_version} release",
             "pub_date": "${pub_date}",
             "platforms": {
+              "darwin-aarch64": {
+                "signature": "",
+                "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${macos_aarch64_name}"
+              },
+              "darwin-x86_64": {
+                "signature": ",
+                "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${macos_x86_64_name}"
+              },
+              "linux-x86_64": {
+                "signature": "",
+                "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${linux_x86_64_name}"
+              },
               "windows-x86_64": {
                 "signature": "${{ needs.build_windows.outputs.windows_x86_64_sig }}",
                 "url": "https://github.com/codefen/a/releases/download/anarch-ai-v${package_version}/${windows_x86_64_name}"
