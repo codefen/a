@@ -5,6 +5,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$FilePath = $FilePath.Trim('"', "'", ' ')
+
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Firmando archivo con SSL.com eSigner" -ForegroundColor Cyan
 Write-Host "Archivo: $FilePath" -ForegroundColor Cyan
@@ -38,12 +40,13 @@ if (-not (Test-Path $FilePath)) {
 $FilePath = (Resolve-Path $FilePath).Path
 $FileName = Split-Path $FilePath -Leaf
 
-# Crear directorio temporal para output
-$tempOutputDir = Join-Path $env:TEMP "codesign_$(New-Guid)"
+# Crear directorio temporal para output (compatible con PS antiguo)
+$guidString = [guid]::NewGuid().ToString()
+$tempOutputDir = Join-Path $env:TEMP "codesign_$guidString"
 New-Item -ItemType Directory -Path $tempOutputDir -Force | Out-Null
 
 # Crear archivo temporal para TOTP (seguridad)
-$totpFile = Join-Path $env:TEMP "totp_$(New-Guid).txt"
+$totpFile = Join-Path $env:TEMP "totp_$guidString.txt"
 
 try {
     # Guardar TOTP en archivo temporal
@@ -63,26 +66,15 @@ try {
     try {
         Write-Host "Ejecutando CodeSignTool..."
 
-        # Ejecutar CodeSignTool
-        $process = Start-Process -FilePath "cmd.exe" `
-            -ArgumentList "/c", "CodeSignTool.bat $signCommand" `
-            -Wait -PassThru -NoNewWindow `
-            -RedirectStandardOutput "$env:TEMP\cst_stdout.txt" `
-            -RedirectStandardError "$env:TEMP\cst_stderr.txt"
-
+        # Ejecutar CodeSignTool y capturar output
+        $output = & cmd.exe /c "CodeSignTool.bat $signCommand" 2>&1
+        
         # Mostrar output
-        if (Test-Path "$env:TEMP\cst_stdout.txt") {
-            $stdout = Get-Content "$env:TEMP\cst_stdout.txt" -Raw
-            if ($stdout) { Write-Host $stdout }
-        }
-        if (Test-Path "$env:TEMP\cst_stderr.txt") {
-            $stderr = Get-Content "$env:TEMP\cst_stderr.txt" -Raw
-            if ($stderr) { Write-Host $stderr -ForegroundColor Yellow }
-        }
+        $output | ForEach-Object { Write-Host $_ }
 
         # Verificar resultado
-        if ($process.ExitCode -ne 0) {
-            Write-Error "CodeSignTool failed with exit code $($process.ExitCode)"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "CodeSignTool failed with exit code $LASTEXITCODE"
             exit 1
         }
 
