@@ -9,7 +9,7 @@ $FilePath = $FilePath.Trim().Trim('"').Trim("'")
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Firmando archivo con SSL.com eSigner" -ForegroundColor Cyan
-Write-Host "Archivo: $FilePath" -ForegroundColor Cyan
+Write-Host "Archivo recibido: $FilePath" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 # Variables de entorno (configuradas en GitHub Actions)
@@ -39,6 +39,24 @@ if (-not (Test-Path $FilePath)) {
 # Obtener ruta absoluta del archivo
 $FilePath = (Resolve-Path $FilePath).Path
 $FileName = Split-Path $FilePath -Leaf
+$FileExtension = [System.IO.Path]::GetExtension($FilePath).ToLower()
+
+Write-Host "Detalles del archivo:" -ForegroundColor Cyan
+Write-Host "  Ruta absoluta: $FilePath" -ForegroundColor Cyan
+Write-Host "  Nombre: $FileName" -ForegroundColor Cyan
+Write-Host "  Extensión: $FileExtension" -ForegroundColor Cyan
+
+# Validar extensión de archivo soportada
+$supportedExtensions = @('.exe', '.dll', '.ocx', '.msi', '.msix', '.appx', '.cab', '.cat', '.sys', '.vxd')
+if ($FileExtension -notin $supportedExtensions) {
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host "OMITIENDO ARCHIVO - Extensión no soportada" -ForegroundColor Yellow
+    Write-Host "  Extensión: $FileExtension" -ForegroundColor Yellow
+    Write-Host "  Archivo: $FileName" -ForegroundColor Yellow
+    Write-Host "  Extensiones soportadas: $($supportedExtensions -join ', ')" -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Yellow
+    exit 0
+}
 
 # Crear directorio temporal para output (compatible con PS antiguo)
 $guidString = [guid]::NewGuid().ToString()
