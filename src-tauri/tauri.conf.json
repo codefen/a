@@ -61,7 +61,16 @@
 			"certificateThumbprint": null,
 			"digestAlgorithm": "sha256",
 			"timestampUrl": "",
-			"signCommand": "powershell -ExecutionPolicy Bypass -File ../scripts/sign-with-codesigntool.ps1 \"%1\""
+			"signCommand": {
+				"cmd": "powershell",
+				"args": [
+				  "-ExecutionPolicy",
+				  "Bypass", 
+				  "-File",
+				  "../scripts/sign-with-codesigntool.ps1",
+				  "%1"
+				]
+			  }
 		},
 		"linux": {
 			"deb": {
