@@ -61,11 +61,20 @@
 			"certificateThumbprint": null,
 			"digestAlgorithm": "sha256",
 			"timestampUrl": "",
+			"nsis": {
+				"installerIcon": "icons/icon.ico",
+				"installMode": "perMachine",
+				"displayLanguageSelector": false
+			},
+			"wix": {
+				"bannerPath": "icons/icon493x58.bmp",
+				"dialogImagePath": "icons/icon493x312.bmp"
+			},
 			"signCommand": {
 				"cmd": "powershell",
 				"args": [
 				  "-ExecutionPolicy",
-				  "Bypass", 
+				  "Bypass",
 				  "-File",
 				  "../scripts/sign-with-codesigntool.ps1",
 				  "%1"
