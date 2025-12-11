@@ -8,7 +8,7 @@ use tauri_plugin_window_state::StateFlags;
 fn create_main_window(app: tauri::AppHandle) -> Result<(), tauri::Error> {
     if app.get_webview_window("main").is_none() {
         let win_builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
-            .title("Codefend Panel")
+            .title("Anarch AI")
             .inner_size(800.0, 600.0)
             .resizable(true)
             .maximized(true);

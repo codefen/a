@@ -100,8 +100,6 @@ jobs:
           VITE_APP_ENV=production
           "@ | Out-File -FilePath .env -Encoding UTF8
 
-          Write-Host "✅ Production environment file created"
-
       - name: ☕ Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -120,10 +118,8 @@ jobs:
         if: steps.cache-codesigntool.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          Write-Host "📥 Descargando CodeSignTool..."
           Invoke-WebRequest -Uri "https://www.ssl.com/download/codesigntool-for-windows/" -OutFile "CodeSignTool.zip"
           Expand-Archive -Path "CodeSignTool.zip" -DestinationPath "$env:GITHUB_WORKSPACE\codesigntool" -Force
-          Write-Host "✅ CodeSignTool descargado y extraído"
 
       - name: 🔍 Locate CodeSignTool
         id: locate-codesigntool
@@ -136,7 +132,6 @@ jobs:
           }
           $batDir = Split-Path -Parent $batFile.FullName
           echo "CODESIGNTOOL_DIR=$batDir" >> $env:GITHUB_OUTPUT
-          Write-Host "✅ CodeSignTool encontrado en: $batDir"
 
       - name: 🔨 Build frontend
         run: bun run build
@@ -155,30 +150,13 @@ jobs:
           SSL_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
           CODESIGNTOOL_DIR: ${{ steps.locate-codesigntool.outputs.CODESIGNTOOL_DIR }}
         run: |
-          Write-Host "========================================" -ForegroundColor Cyan
-          Write-Host "🔨🔐 CONSTRUYENDO Y FIRMANDO CON TAURI" -ForegroundColor Cyan
-          Write-Host "========================================" -ForegroundColor Cyan
-          Write-Host ""
-          Write-Host "Tauri llamará automáticamente al script de firma para:"
-          Write-Host "  ✓ Binario de la aplicación (anarch-ai.exe)"
-          Write-Host "  ✓ Instalador NSIS (.exe)"
-          Write-Host "  ✓ Instalador MSI (.msi)"
-          Write-Host ""
-
           cd src-tauri
           bun x --yes @tauri-apps/cli@latest build --bundles nsis,msi --verbose
           cd ..
 
-          Write-Host ""
-          Write-Host "========================================" -ForegroundColor Green
-          Write-Host "✅ BUILD Y FIRMA COMPLETADOS" -ForegroundColor Green
-          Write-Host "========================================" -ForegroundColor Green
-
       - name: ✅ Verify all signatures
         shell: pwsh
         run: |
-          Write-Host "🔍 Verificando todas las firmas..." -ForegroundColor Cyan
-
           $allFiles = @()
           $allFiles += Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
           $allFiles += Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
@@ -207,8 +185,6 @@ jobs:
             Write-Error "`n❌ Algunos archivos no están firmados correctamente"
             exit 1
           }
-
-          Write-Host "`n✅ TODOS LOS ARCHIVOS ESTÁN FIRMADOS CORRECTAMENTE" -ForegroundColor Green
 
       - name: 🔏 Generate Tauri updater .sig files
         shell: pwsh
@@ -248,24 +224,21 @@ jobs:
               Write-Error "❌ No se generó el archivo .sig: $expectedSig"
               exit 1
             }
-            Write-Host "✅ .sig generado: $expectedSig"
           }
 
-          Write-Host "`n✅ Todos los archivos .sig generados correctamente"
-
-      - name: 🔍 Debug - List files before upload
-        shell: pwsh
-        run: |
-          Write-Host "=== Files in bundle directories ==="
-          Write-Host "`n📁 MSI files:"
-          Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "  - $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
-          }
-          Write-Host "`n📁 NSIS files:"
-          Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "  - $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
-          }
-          Write-Host "===================================="
+      # - name: 🔍 Debug - List files before upload
+      #   shell: pwsh
+      #   run: |
+      #     Write-Host "=== Files in bundle directories ==="
+      #     Write-Host "`n📁 MSI files:"
+      #     Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -ErrorAction SilentlyContinue | ForEach-Object {
+      #       Write-Host "  - $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
+      #     }
+      #     Write-Host "`n📁 NSIS files:"
+      #     Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -ErrorAction SilentlyContinue | ForEach-Object {
+      #       Write-Host "  - $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
+      #     }
+      #     Write-Host "===================================="
 
       - name: 📤 Upload signed artifacts to release
         if: inputs.release_id != ''
@@ -276,7 +249,6 @@ jobs:
         run: |
           $tag = "anarch-ai-v${{ inputs.package_version }}"
           $repo = "$env:GITHUB_REPOSITORY"
-          Write-Host "🏷️ Publicando en release/tag: $tag en repo: $repo"
 
           $artifacts = @()
           $msiFiles = Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" }
@@ -290,8 +262,6 @@ jobs:
             exit 1
           }
 
-          Write-Host "📦 Archivos a subir: $($artifacts.Count)"
-
           foreach ($artifact in $artifacts) {
             Write-Host "`n📤 Subiendo: $($artifact.Name) ($([math]::Round($artifact.Length/1MB, 2)) MB)"
 
@@ -302,24 +272,7 @@ jobs:
               Write-Error "❌ Error subiendo $($artifact.Name): $($_.Exception.Message)"
               exit 1
             }
-
-            # Subir archivo .sig si existe
-            $sigPath = "$($artifact.FullName).sig"
-            if (Test-Path $sigPath) {
-              Write-Host "📤 Subiendo .sig: $(Split-Path $sigPath -Leaf)"
-              try {
-                gh release upload $tag "$sigPath" --repo $repo --clobber
-                Write-Host "✅ Firma subida exitosamente"
-              } catch {
-                Write-Error "❌ Error subiendo firma: $($_.Exception.Message)"
-                exit 1
-              }
-            } else {
-              Write-Warning "⚠️ No se encontró .sig para $($artifact.Name)"
-            }
           }
-
-          Write-Host "`n✅ Todos los archivos de Windows subidos exitosamente"
 
       - name: 📤 Upload signed artifacts to workflow
         uses: actions/upload-artifact@v4
@@ -336,8 +289,6 @@ jobs:
         id: extract-signatures
         shell: pwsh
         run: |
-          Write-Host "🔍 Buscando artefactos para extracción de firma..."
-
           # Seleccionar artefacto principal (MSI preferido; si no, EXE)
           $msiFile = Get-ChildItem -Path ".\src-tauri\target\release\bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
           $exeFile = Get-ChildItem -Path ".\src-tauri\target\release\bundle\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
@@ -358,9 +309,6 @@ jobs:
             exit 1
           }
 
-          Write-Host "✅ Usando artefacto ${artifactType}: $($artifact.Name)"
-
-          # Buscar archivo .sig
           $sigFile = "$($artifact.FullName).sig"
           if (-not (Test-Path $sigFile)) {
             Write-Error "❌ No se encontró archivo .sig para $($artifact.Name)"
@@ -380,11 +328,6 @@ jobs:
           echo "windows_x86_64_sig=$signature" >> $env:GITHUB_OUTPUT
           echo "windows_x86_64_name=$($artifact.Name)" >> $env:GITHUB_OUTPUT
 
-          Write-Host "✅ Extracción completada:"
-          Write-Host "   📦 Package: $($artifact.Name)"
-          Write-Host "   📝 Signature length: $($signature.Length) chars"
-          Write-Host "   🔍 Signature preview: $($signature.Substring(0, [Math]::Min(50, $signature.Length)))..."
-
       - name: 🧹 Cleanup temporary files
         if: always()
         shell: pwsh
@@ -393,7 +336,6 @@ jobs:
           @("codesigntool", "signed", "signed-app") | ForEach-Object {
             if (Test-Path "$env:GITHUB_WORKSPACE\$_") {
               Remove-Item -Path "$env:GITHUB_WORKSPACE\$_" -Recurse -Force
-              Write-Host "🗑️ Limpiado: $_"
             }
           }
 
