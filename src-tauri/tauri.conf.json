@@ -31,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "nsis", "app", "dmg"],
+    "targets": ["deb", "appimage", "rpm", "nsis", "msi", "app", "dmg"],
     "publisher": "Anarch AI",
     "copyright": "Copyright 2025 Codefend LLC",
     "icon": [
@@ -67,28 +67,24 @@
 				"displayLanguageSelector": false
 			},
 			"wix": {
-				"bannerPath": "icons/icon493x58.bmp",
-				"dialogImagePath": "icons/icon493x312.bmp"
+				"language": "en-US"
 			},
-			"signCommand": {
-				"cmd": "powershell",
-				"args": [
-				  "-ExecutionPolicy",
-				  "Bypass",
-				  "-File",
-				  "../scripts/sign-with-codesigntool.ps1",
-				  "%1"
-				]
-			  }
+			"signCommand": null
 		},
 		"linux": {
-			"deb": {
-				"depends": []
-			},
 			"appimage": {
-				"bundleMediaFramework": true
+			  "bundleMediaFramework": false,
+			  "files": {}
+			},
+			"deb": {
+			  "files": {}
+			},
+			"rpm": {
+			  "epoch": 0,
+			  "files": {},
+			  "release": "1"
 			}
-		}
+		  }
 	},
 	"plugins": {
 		"fs": {

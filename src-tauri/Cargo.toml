@@ -1,6 +1,6 @@
 [package]
 name = "anarch-ai"
-version = "0.1.8"
+version = "0.1.9"
 description = "Anarch AI assistant"
 authors = ["arch"]
 repository = "https://github.com/codefen/a"
