@@ -69,7 +69,16 @@
 			"wix": {
 				"language": "en-US"
 			},
-			"signCommand": null
+			"signCommand": {
+				"cmd": "powershell",
+				"args": [
+				  "-ExecutionPolicy",
+				  "Bypass", 
+				  "-File",
+				  "../scripts/sign-with-codesigntool.ps1",
+				  "%1"
+				]
+			  }
 		},
 		"linux": {
 			"appimage": {
