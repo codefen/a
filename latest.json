@@ -1,0 +1,23 @@
+{
+  "version": "0.1.9",
+  "notes": "Anarch AI 0.1.9 release",
+  "pub_date": "2025-12-12T09:55:34Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.9/Anarch.AI.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.9/Anarch.AI.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.9/Anarch.AI_0.1.9_amd64.AppImage"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSNnpVRlN1QjZHVlFMbmNXd1RMQ0g3dzZrNldZcU9vRFc2U1pPQmVyWitYY0JrTysrUEw2Y2RaWGZMRitnVE1RSkMybEJYN0h2VFhnWGd5Wk4wcEVoT25zaHRWaHlhQlFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY1NTMzMTc4CWZpbGU6QW5hcmNoIEFJXzAuMS45X3g2NF9lbi1VUy5tc2kKZTN5ZXFVZ0J0UXpoZVRoVGxicDV2RlpqU2hTL0lhR2pFeHkwaE1Pa0k1MmZDa3daZnd4OGxJNDY4VmpPYkhxUEJaK0w5ODNWMnZDdjhrbkpxZkowRGc9PQo=",
+      "url": "https://github.com/codefen/a/releases/download/anarch-ai-v0.1.9/Anarch.AI_0.1.9_x64_en-US.msi"
+    }
+  }
+}
