@@ -52,7 +52,7 @@ body {
 
 body {
   font-family: 'Satoshi', 'Avenir Next', 'Segoe UI', sans-serif;
-  background: radial-gradient(circle at 16% 8%, #ffffff 0%, #f4f4f4 35%, var(--bg-page) 86%);
+  background: linear-gradient(to bottom, #ffffff 70%, #f4f4f4 100%);
   color: var(--text-strong);
 }
 
@@ -486,22 +486,19 @@ body {
 .home-hero {
   display: none;
   width: min(680px, calc(100vw - 36px));
-  position: relative;
   text-align: center;
 }
 
 .watermark-a {
   position: absolute;
   left: 50%;
-  top: 61%;
+  top: 58%;
+  margin-top: -5%;
   transform: translate(-50%, -50%);
-  font-family: "Snell Roundhand", "Apple Chancery", "URW Chancery L", "Lucida Calligraphy", cursive;
-  font-size: clamp(250px, 31vw, 560px);
-  font-style: normal;
-  line-height: 0.8;
-  letter-spacing: -0.02em;
-  color: rgba(188, 191, 196, 0.30);
+  width: min(516px, 76vw);
+  height: auto;
   opacity: 1;
+  z-index: 1;
   user-select: none;
   pointer-events: none;
 }
@@ -1118,7 +1115,7 @@ body {
   }
 
   .watermark-a {
-    font-size: clamp(180px, 56vw, 320px);
+    width: min(380px, 75vw);
   }
 
   .input-section {
@@ -1151,7 +1148,7 @@ body.layout-home .chat-container {
   justify-content: center;
   align-items: center;
   gap: 40px;
-  padding-bottom: 167px;
+  margin-top: -5%;
   transform: none;
 }
 
@@ -1167,11 +1164,13 @@ body.layout-home .typing-indicator {
 body.layout-home .input-section {
   width: min(680px, calc(100vw - 36px));
   padding-bottom: 0;
+  z-index: 2;
 }
 
 body.layout-home .input-container {
   min-height: 50px;
   border-color: #d9d9d9;
+  box-shadow: 0px 0px 14px rgba(0, 0, 0, 0.07);
 }
 
 body.layout-home .message-input {
