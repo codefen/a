@@ -1,0 +1,129 @@
+name: deploy-unified
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-deploy-intent:
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+      deploy_environment: ${{ steps.check.outputs.deploy_environment }}
+    steps:
+      - name: Verificar intención de deploy
+        id: check
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
+        run: |
+          set -euo pipefail
+
+          contenido="$HEAD_COMMIT_MESSAGE"
+          echo "Contenido analizado: $contenido"
+
+          environment="skip"
+          
+          # Buscar EXACTAMENTE las frases de deploy
+          if echo "$contenido" | grep -Eiq '\bdeploy\s+to\s+production\b'; then
+            echo "🎯 Detectado: deploy to production"
+            environment="production"
+          elif echo "$contenido" | grep -Eiq '\bdeploy\s+to\s+demo\b'; then
+            echo "🎯 Detectado: deploy to demo"  
+            environment="demo"
+          else
+            echo "❌ No se detectó frase de deploy válida"
+          fi
+
+          echo "Environment final detectado: $environment"
+
+          if [ "$environment" = "skip" ]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=" >> "$GITHUB_OUTPUT"
+            echo "❌ No se detectó intención de deploy. Workflow terminado."
+          else
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=$environment" >> "$GITHUB_OUTPUT"
+            echo "✅ Ambiente detectado: $environment"
+          fi
+
+  deploy-to-ftp:
+    runs-on: ubuntu-latest
+    needs: check-deploy-intent
+    if: needs.check-deploy-intent.outputs.should_deploy == 'true'
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Build project with Gulp
+        run: |
+          npm run build
+          
+      - name: Install FTP client
+        run: |
+          npm install basic-ftp
+
+      - name: Deploy to FTP (${{ needs.check-deploy-intent.outputs.deploy_environment }})
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+          DEPLOY_ENV: ${{ needs.check-deploy-intent.outputs.deploy_environment }}
+        run: |
+          cat > deploy.js << 'EOF'
+          const ftp = require('basic-ftp');
+          const fs = require('fs');
+          const path = require('path');
+
+          async function deploy() {
+            const client = new ftp.Client();
+            client.ftp.verbose = true;
+            
+            try {
+              console.log('🚀 Conectando al servidor FTP...');
+              console.log('📍 Host:', process.env.FTP_SERVER);
+              console.log('👤 Usuario:', process.env.FTP_USERNAME);
+              console.log('🔐 Password length:', process.env.FTP_PASSWORD ? process.env.FTP_PASSWORD.length : 'undefined');
+              
+              await client.access({
+                host: process.env.FTP_SERVER,
+                user: process.env.FTP_USERNAME,
+                password: process.env.FTP_PASSWORD,
+                secure: false,
+                port: 21
+              });
+              console.log('✅ Conexión FTP exitosa sin SSL');
+              
+              console.log('📁 Navegando al directorio destino:', process.env.FTP_SERVER_DIR);
+              await client.cd(process.env.FTP_SERVER_DIR);
+              
+              console.log('🗂️ Subiendo archivos desde carpeta dist/...');
+              await client.uploadFromDir('dist', '', {
+                exclude: [
+                  'deploy.js'
+                ]
+              });
+              
+              console.log('✅ Deploy completado exitosamente a', process.env.DEPLOY_ENV);
+            } catch (err) {
+              console.error('❌ Error durante el deploy:', err);
+              process.exit(1);
+            } finally {
+              client.close();
+            }
+          }
+          
+          deploy();
+          EOF
+          
+          node deploy.js
