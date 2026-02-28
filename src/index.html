@@ -32,7 +32,20 @@
       <div class="top-nav-left">
         <div class="brand-name">Anarch.ai</div>
         <button class="ideas-chip mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Open control panel">
-          ideas novedosas <span>✨</span>
+          <span class="ideas-chip__label">ideas novedosas</span>
+          <span class="ideas-chip__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img" focusable="false">
+              <circle cx="12" cy="12" r="4.6" fill="currentColor"></circle>
+              <rect x="10.8" y="1.1" width="2.4" height="4.2" rx="0.8" fill="currentColor"></rect>
+              <rect x="10.8" y="18.7" width="2.4" height="4.2" rx="0.8" fill="currentColor"></rect>
+              <rect x="18.7" y="10.8" width="4.2" height="2.4" rx="0.8" fill="currentColor"></rect>
+              <rect x="1.1" y="10.8" width="4.2" height="2.4" rx="0.8" fill="currentColor"></rect>
+              <rect x="10.8" y="1.1" width="2.4" height="4.2" rx="0.8" fill="currentColor" transform="rotate(45 12 12)"></rect>
+              <rect x="10.8" y="1.1" width="2.4" height="4.2" rx="0.8" fill="currentColor" transform="rotate(135 12 12)"></rect>
+              <rect x="10.8" y="1.1" width="2.4" height="4.2" rx="0.8" fill="currentColor" transform="rotate(225 12 12)"></rect>
+              <rect x="10.8" y="1.1" width="2.4" height="4.2" rx="0.8" fill="currentColor" transform="rotate(315 12 12)"></rect>
+            </svg>
+          </span>
         </button>
       </div>
       <div class="top-nav-right">
@@ -114,7 +127,7 @@
                 <button class="icon-btn" id="imageUploadBtn" title="Attach Images" type="button">🖼️</button>
               </div>
 
-              <textarea class="message-input" id="messageInput" placeholder="" rows="1"></textarea>
+              <textarea class="message-input" id="messageInput" placeholder="..." rows="1"></textarea>
 
               <div class="action-buttons">
                 <button class="icon-btn" id="clearButton" title="Clear Chat" type="button">
@@ -123,7 +136,10 @@
                   </svg>
                 </button>
                 <button class="send-button" id="sendButton" title="Send Message" type="button">
-                  <span aria-hidden="true">↑</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 18V7" />
+                    <path d="M7.5 11.5L12 7l4.5 4.5" />
+                  </svg>
                 </button>
               </div>
             </div>
