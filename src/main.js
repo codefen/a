@@ -38,7 +38,7 @@ class ChatGPTUI {
     this.sessions = new Map();
     this.isFirstMessage = true;
 
-    this.isSidebarVisible = true;
+    this.isSidebarVisible = false;
     this.currentStreamingMessage = null;
 
     this.autoSaveTimeout = null;
@@ -67,6 +67,7 @@ class ChatGPTUI {
     this.loadSessions();
     this.setupMobileMenu();
     this.setupSidebarResizing();
+    this.syncLayoutState();
     this.checkForUpdatesOnStartup();
   }
 
@@ -212,12 +213,15 @@ class ChatGPTUI {
 
   setupMobileMenu() {
     this.mobileMenuToggle.addEventListener('click', () => {
-      this.sidebar.classList.toggle('show');
-      this.sidebarOverlay.classList.toggle('show');
+      this.toggleMobileMenu();
     });
     this.sidebarOverlay.addEventListener('click', () => {
-      this.sidebar.classList.remove('show');
-      this.sidebarOverlay.classList.remove('show');
+      this.closeMobileMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.closeMobileMenu();
+      }
     });
   }
 
@@ -239,49 +243,17 @@ class ChatGPTUI {
   }
 
   openMobileMenu(instant = false) {
-    if (instant) {
-      this.sidebar.style.transition = 'none';
-      this.mainContent.style.transition = 'none';
-    } else {
-      this.sidebar.style.transition = 'transform var(--transition-slow)';
-      this.mainContent.style.transition = 'all var(--transition-slow)';
-    }
-
     this.sidebar.classList.add('show');
     this.sidebarOverlay.classList.add('show');
     this.mobileMenuToggle.classList.add('active');
-    this.mainContent.classList.remove('sidebar-hidden');
     this.isSidebarVisible = true;
-
-    if (instant) {
-      setTimeout(() => {
-        this.sidebar.style.transition = '';
-        this.mainContent.style.transition = '';
-      }, 50);
-    }
   }
 
   closeMobileMenu(instant = false) {
-    if (instant) {
-      this.sidebar.style.transition = 'none';
-      this.mainContent.style.transition = 'none';
-    } else {
-      this.sidebar.style.transition = 'transform var(--transition-slow)';
-      this.mainContent.style.transition = 'all var(--transition-slow)';
-    }
-
     this.sidebar.classList.remove('show');
     this.sidebarOverlay.classList.remove('show');
     this.mobileMenuToggle.classList.remove('active');
-    this.mainContent.classList.add('sidebar-hidden');
     this.isSidebarVisible = false;
-
-    if (instant) {
-      setTimeout(() => {
-        this.sidebar.style.transition = '';
-        this.mainContent.style.transition = '';
-      }, 50);
-    }
   }
 
 
@@ -722,6 +694,7 @@ class ChatGPTUI {
         role: 'user',
         content: messageContent
       });
+      this.syncLayoutState();
 
       this.resetMessageInput();
       this.prepareForResponse();
@@ -748,6 +721,7 @@ class ChatGPTUI {
       role: 'user',
       content: prompt
     });
+    this.syncLayoutState();
 
     this.resetMessageInput();
     this.prepareForResponse();
@@ -780,6 +754,7 @@ class ChatGPTUI {
         role: 'assistant',
         content: imageMarkdown
       });
+      this.syncLayoutState();
 
     } catch (error) {
       this.addErrorMessageToChat(error.message);
@@ -1016,6 +991,7 @@ class ChatGPTUI {
       role: 'assistant',
       content: finalContent
     });
+    this.syncLayoutState();
     this.scheduleAutoSave();
 
     this.updateSessionTimestampAndSave();
@@ -1061,6 +1037,7 @@ class ChatGPTUI {
       role: 'assistant',
       content: assistantResponse
     });
+    this.syncLayoutState();
     this.scheduleAutoSave();
     this.updateSessionTimestampAndSave();
   }
@@ -1201,12 +1178,13 @@ class ChatGPTUI {
     this.isFirstMessage = this.messages.length === 0;
 
     if (this.isFirstMessage) {
-      this.chatMessages.innerHTML = `<div class="message assistant"><div class="message-content">Hello! To begin, please type your message in the text box below.</div></div>`;
+      this.chatMessages.innerHTML = '';
     } else {
       this.renderMessages();
     }
 
     this.updateSessionsList();
+    this.syncLayoutState();
   }
 
   updateSessionsList() {
@@ -1233,7 +1211,7 @@ class ChatGPTUI {
   resetToEmptyState() {
 
     this.sessionsList.innerHTML = '';
-    this.chatMessages.innerHTML = `<div class="message assistant"><div class="message-content">Hello! All chats have been cleared. Type a message below to start a new conversation.</div></div>`;
+    this.chatMessages.innerHTML = '';
     this.sessionNameInput.value = '';
 
 
@@ -1245,6 +1223,7 @@ class ChatGPTUI {
 
 
     localStorage.removeItem('chatgpt_ui_last_session_id');
+    this.syncLayoutState();
   }
   deleteSession(sessionId) {
 
@@ -1403,6 +1382,7 @@ class ChatGPTUI {
         this.addMessage(msg.role, msg.content);
       }
     });
+    this.syncLayoutState();
   }
 
   copyMessage(button) {
@@ -1423,7 +1403,14 @@ class ChatGPTUI {
       this.chatMessages.innerHTML = '';
       this.clearUploadedFiles();
       this.performAutoSave();
+      this.syncLayoutState();
     }
+  }
+
+  syncLayoutState() {
+    const hasMessages = this.messages.some(msg => msg.role !== 'system');
+    document.body.classList.toggle('layout-home', !hasMessages);
+    document.body.classList.toggle('layout-chat', hasMessages);
   }
 
 
@@ -1902,6 +1889,7 @@ class ChatGPTUI {
     errorDiv.innerHTML = `<div class="message-content"><strong>API Error:</strong><br>${sanitizedMessage}</div>`;
 
     this.chatMessages.appendChild(errorDiv);
+    this.syncLayoutState();
     this.scrollToBottom();
   }
 
